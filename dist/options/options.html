@@ -37,9 +37,10 @@
 
       <section aria-labelledby="rules-title">
         <h2 id="rules-title">Labels</h2>
-        <p>Posts stay visible while pending or uncertain. Collapse is off by default and remains reversible.</p>
+        <p>Posts stay visible while pending or uncertain. Every display mode remains reversible.</p>
         <fieldset>
           <legend>Categories</legend>
+          <label><input type="checkbox" data-category="ai_slop"> AI slop (quality, not authorship)</label>
           <label><input type="checkbox" data-category="engagement_bait"> Engagement bait</label>
           <label><input type="checkbox" data-category="generic_filler"> Generic filler</label>
           <label><input type="checkbox" data-category="empty_hype"> Empty hype</label>
@@ -47,6 +48,7 @@
         <fieldset>
           <legend>Display mode</legend>
           <label><input type="radio" name="mode" value="label"> Label only</label>
+          <label><input type="radio" name="mode" value="overlay"> Translucent banner</label>
           <label><input type="radio" name="mode" value="collapse"> Collapse with “Show post”</label>
         </fieldset>
         <div class="grid">

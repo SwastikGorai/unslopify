@@ -10,6 +10,7 @@
   const MAX_QUEUE = 50;
   const PROTOCOL_VERSION = 1;
   const CATEGORY_LABELS = {
+    ai_slop: 'AI slop',
     engagement_bait: 'engagement bait',
     generic_filler: 'generic filler',
     empty_hype: 'empty hype'
@@ -98,8 +99,7 @@
     return Object.entries(answers || {}).filter(([id, answer]) => state.settings.categoryToggles[id] && answer?.choice === 'present' && answer.probabilities?.present >= thresholds.presentProbability && answer.confidence >= thresholds.confidence);
   }
   function labelFor(categories) {
-    const label = CATEGORY_LABELS[categories[0]] || 'low-value pattern';
-    return `Filtered: ${label}`;
+    return `Filtered: ${categories.map(id => CATEGORY_LABELS[id] || 'low-value pattern').join(' · ')}`;
   }
   function makeControl(text, kind, onClick) {
     const control = document.createElement(kind === 'button' ? 'button' : 'span');
@@ -119,6 +119,18 @@
     if (!categories.length || state.revealed.has(binding.postId)) return;
     const text = labelFor(categories);
     const mode = state.settings.siteModes?.[state.site.id] || state.settings.mode;
+    if (mode === 'overlay') {
+      const card = binding.node;
+      const overlay = makeControl(`${text} — Show post`, 'button', () => {
+        state.revealed.add(binding.postId);
+        removeRender(card);
+      });
+      overlay.classList.add('unslopify-overlay');
+      card.classList.add('unslopify-overlay-host');
+      card.append(overlay);
+      state.rendered.set(card, { overlay });
+      return;
+    }
     if (mode !== 'collapse' || binding.node.contains(document.activeElement)) {
       const label = makeControl(text, 'span');
       binding.node.parentNode?.insertBefore(label, binding.node);
@@ -158,6 +170,8 @@
     restoreCard(card);
     record.label?.remove();
     record.placeholder?.remove();
+    record.overlay?.remove();
+    card.classList.remove('unslopify-overlay-host');
     state.rendered.delete(card);
   }
   function enqueue(card) {

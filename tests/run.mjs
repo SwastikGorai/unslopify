@@ -158,6 +158,10 @@ const tests = [
     const settings = sanitizeSettings(DEFAULT_SETTINGS);
     assert.equal(settings.selectedTransport, 'gateway');
     assert.equal(settings.model, 'typesafe-ai/jev');
+    assert.equal(settings.categoryToggles.ai_slop, true);
+    assert.equal(settings.siteModes.linkedin, 'collapse');
+    assert.equal(settings.mode, 'collapse');
+    assert.equal(mergeSettings(settings, { mode: 'overlay', siteModes: { ...settings.siteModes, linkedin: 'overlay' } }).siteModes.linkedin, 'overlay');
     assert.equal(TRANSPORTS.gateway.endpoint, 'https://ai-gateway.vercel.sh/v1/evaluate');
     assert.equal(sanitizeSettings({ ...DEFAULT_SETTINGS, schemaVersion: 99 }), null);
     const direct = mergeSettings(settings, { selectedTransport: 'direct' });
@@ -169,6 +173,13 @@ const tests = [
     assert.equal(importSettings(exported).enabledSites.linkedin, false);
     assert.deepEqual(settings.consentedRoutes, []);
     assert.equal(direct.siteThresholds.linkedin.presentProbability, 0.9);
+  }],
+  ['AI slop is a quality rubric, not an authorship claim', () => {
+    const question = buildQuestions(['ai_slop']).ai_slop;
+    assert.equal(question.type, 'choice');
+    assert.match(question.instructions, /content quality only/u);
+    assert.match(question.instructions, /never whether AI wrote/u);
+    assert.deepEqual(Object.keys(question.criteria), ['present', 'absent', 'uncertain']);
   }],
   ['custom rules reject broad or executable selector input', () => {
     const valid = validateCustomSite({

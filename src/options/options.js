@@ -68,10 +68,10 @@ function renderSites() {
     disable.addEventListener('click', () => disableSite(site));
     const mode = document.createElement('select');
     mode.setAttribute('aria-label', `${site.label} display mode`);
-    for (const value of ['label', 'collapse']) {
+    for (const value of ['label', 'overlay', 'collapse']) {
       const option = document.createElement('option');
       option.value = value;
-      option.textContent = value === 'collapse' ? 'Collapse' : 'Label';
+      option.textContent = value === 'collapse' ? 'Collapse' : value === 'overlay' ? 'Translucent banner' : 'Label';
       option.selected = (settings.siteModes?.[site.id] || settings.mode) === value;
       mode.append(option);
     }

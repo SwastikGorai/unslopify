@@ -1,6 +1,6 @@
 # Unslopify
 
-Unslopify is a Manifest V3 Chrome extension that labels configurable feed patterns such as engagement bait. It does not infer AI authorship. Pending, uncertain, unsupported, and failed classifications stay visible.
+Unslopify is a Manifest V3 Chrome extension that labels configurable feed patterns such as AI slop and engagement bait. AI slop means templated low-value content quality; it does not infer AI authorship. Pending, uncertain, unsupported, and failed classifications stay visible.
 
 ## Local setup
 
