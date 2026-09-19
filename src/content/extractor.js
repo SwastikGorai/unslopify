@@ -7,6 +7,13 @@
     return String(value ?? '').replace(/\s+/gu, ' ').trim();
   }
 
+  function isEligibleText(value) {
+    const text = normalizeText(value);
+    if (text.length < 20 || text.length > MAX_TEXT) return false;
+    const letters = [...text].filter(character => /\p{L}/u.test(character));
+    return letters.length >= 3 && letters.filter(character => /[A-Za-z]/u.test(character)).length / letters.length >= 0.7;
+  }
+
   function hashText(value) {
     const text = normalizeText(value);
     let hash = 2_166_136_261;
@@ -40,7 +47,7 @@
     const text = normalizeText(body.innerText || body.textContent);
     if (!text || text.length > MAX_TEXT) return null;
     const controlsText = normalizeText(card.querySelector('[aria-expanded="false"]')?.getAttribute('aria-label') || '');
-    const truncated = /see more|show more|read more|\.\.\.$/iu.test(`${text} ${controlsText}`.trim());
+    const truncated = /see more|show more|read more/iu.test(controlsText) || /\.\.\.$/u.test(text);
     const uncertain = Boolean(card.querySelector('blockquote, [data-testid="quoteTweet"], [data-urn*="reshare"]'));
     const permalink = site.permalinkSelector ? card.querySelector(site.permalinkSelector)?.getAttribute('href') : '';
     let postId;
@@ -51,7 +58,7 @@
       } catch { postId = undefined; }
     }
     const textHash = hashText(text);
-    const authorLink = card.querySelector('a[href*="/in/"], [data-testid="User-Name"] a');
+    const authorLink = card.querySelector('.update-components-actor a[href*="/in/"], .feed-shared-actor a[href*="/in/"], [data-testid="User-Name"] a');
     const authorId = authorLink?.getAttribute('href')?.split('?')[0] || card.querySelector('[data-member-id]')?.getAttribute('data-member-id') || '';
     return {
       postId: postId || `${origin}:${textHash}`,
@@ -70,5 +77,9 @@
     return 'connect';
   }
 
-  globalThis.__unslopifyExtractor = Object.freeze({ extractCard, isNestedCard, isOwn, normalizeText, routeAction });
+  function shouldTeardown(message, siteId) {
+    return message?.type === 'TEARDOWN' && (!message.siteId || message.siteId === siteId);
+  }
+
+  globalThis.__unslopifyExtractor = Object.freeze({ extractCard, isEligibleText, isNestedCard, isOwn, normalizeText, routeAction, shouldTeardown });
 })();

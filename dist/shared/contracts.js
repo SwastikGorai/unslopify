@@ -62,9 +62,9 @@ export const BUILTIN_SITES = Object.freeze({
     label: 'LinkedIn feed',
     origin: 'https://www.linkedin.com',
     paths: ['/feed'],
-    feedRootSelector: 'main',
-    postSelector: '[data-urn*="activity"], [data-urn*="ugcPost"]',
-    bodySelector: '[data-test-id="main-feed-activity-card__commentary"], .feed-shared-update-v2__description, .feed-shared-text',
+    feedRootSelector: '[data-testid="mainFeed"], main',
+    postSelector: '[role="listitem"], [data-urn*="activity"], [data-urn*="ugcPost"]',
+    bodySelector: '[data-testid="expandable-text-box"], [data-test-id="main-feed-activity-card__commentary"], .feed-shared-update-v2__description, .feed-shared-text',
     permalinkSelector: 'a[href*="/feed/update/"], a[href*="/posts/"]',
     extractionVersion: 'linkedin-1'
   }),
@@ -148,7 +148,6 @@ export function siteForUrl(rawUrl, settings = DEFAULT_SETTINGS) {
   try { url = new URL(rawUrl); } catch { return null; }
   for (const site of Object.values(BUILTIN_SITES)) {
     if (url.origin === site.origin && isSupportedPath(url.pathname, site.paths) && settings.enabledSites[site.id]) return site;
-    if (site.id === 'x' && url.origin === 'https://twitter.com' && isSupportedPath(url.pathname, site.paths) && settings.enabledSites.x) return { ...site, origin: url.origin };
   }
   for (const site of settings.customSites ?? []) {
     if (site.enabled && url.origin === site.origin && isSupportedPath(url.pathname, site.paths)) return site;

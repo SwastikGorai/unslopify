@@ -15,7 +15,6 @@
     "https://api.typesafe.ai/*",
     "https://www.linkedin.com/*",
     "https://x.com/*",
-    "https://twitter.com/*",
     "https://*/*"
   ],
   "background": {

@@ -1,8 +1,13 @@
 (() => {
   'use strict';
 
+  if (globalThis.__unslopifyContentLoaded) {
+    chrome.runtime.sendMessage({ type: 'CONTENT_READY' }).then(response => globalThis.__unslopifyApplySettings?.(response?.settings)).catch(() => undefined);
+    return;
+  }
+  globalThis.__unslopifyContentLoaded = true;
+
   const MAX_QUEUE = 50;
-  const MAX_TEXT = 8_000;
   const PROTOCOL_VERSION = 1;
   const CATEGORY_LABELS = {
     engagement_bait: 'engagement bait',
@@ -14,9 +19,9 @@
       id: 'linkedin',
       origin: 'https://www.linkedin.com',
       paths: ['/feed'],
-      feedRootSelector: 'main',
-      postSelector: '[data-urn*="activity"], [data-urn*="ugcPost"]',
-      bodySelector: '[data-test-id="main-feed-activity-card__commentary"], .feed-shared-update-v2__description, .feed-shared-text',
+      feedRootSelector: '[data-testid="mainFeed"], main',
+      postSelector: '[role="listitem"], [data-urn*="activity"], [data-urn*="ugcPost"]',
+      bodySelector: '[data-testid="expandable-text-box"], [data-test-id="main-feed-activity-card__commentary"], .feed-shared-update-v2__description, .feed-shared-text',
       permalinkSelector: 'a[href*="/feed/update/"], a[href*="/posts/"]',
       extractionVersion: 'linkedin-1'
     },
@@ -53,18 +58,12 @@
   };
 
   const normalizeText = contentRuntime?.normalizeText || (value => String(value ?? '').replace(/\s+/gu, ' ').trim());
-  function isEligibleText(value) {
-    const text = normalizeText(value);
-    if (text.length < 20 || text.length > MAX_TEXT) return false;
-    const letters = [...text].filter(character => /\p{L}/u.test(character));
-    return letters.length >= 3 && letters.filter(character => /[A-Za-z]/u.test(character)).length / letters.length >= 0.7;
-  }
+  const isEligibleText = contentRuntime?.isEligibleText || (() => false);
   function pathMatches(pathname, paths) {
     return paths.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`));
   }
   function siteForLocation(settings = state.settings) {
-    const builtin = SITES.find(site => location.origin === site.origin && pathMatches(location.pathname, site.paths))
-      ?? (location.origin === 'https://twitter.com' && pathMatches(location.pathname, ['/home']) ? { ...SITES[1], origin: location.origin } : null);
+    const builtin = SITES.find(site => location.origin === site.origin && pathMatches(location.pathname, site.paths));
     if (builtin && settings?.enabledSites?.[builtin.id]) return builtin;
     return (settings?.customSites || []).find(site => site.enabled && location.origin === site.origin && pathMatches(location.pathname, site.paths)) || null;
   }
@@ -288,8 +287,13 @@
     state.site = nextSite;
     state.stopped = false;
     state.generation += 1;
+    state.observer?.disconnect();
+    state.intersection?.disconnect();
+    state.feedRoot = null;
     connectFeed();
   }
+
+  globalThis.__unslopifyApplySettings = applySettings;
 
   function previewRule(rule) {
     if (!rule || location.origin !== rule.origin || !pathMatches(location.pathname, rule.paths || [])) return { ok: false, error: 'off_route' };
@@ -318,7 +322,7 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === 'PREVIEW_RULE') { sendResponse(previewRule(message.rule)); return true; }
     if (message?.type === 'SETTINGS_CHANGED') applySettings(message.settings);
-    if (message?.type === 'TEARDOWN') { state.settings = null; state.site = null; teardown(); }
+    if (contentRuntime?.shouldTeardown?.(message, state.site?.id) ?? (message?.type === 'TEARDOWN' && (!message.siteId || message.siteId === state.site?.id))) { state.settings = null; state.site = null; teardown(); }
   });
   addEventListener('popstate', updateRoute);
   addEventListener('visibilitychange', updateRoute);

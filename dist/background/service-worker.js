@@ -69,8 +69,24 @@ const runtime = {
   initialized: null
 };
 
-function isExtensionSender(sender) {
-  return Boolean(sender?.id && sender.id === chrome.runtime.id && !sender.tab && typeof sender.url === 'string' && sender.url.startsWith(`chrome-extension://${chrome.runtime.id}/`));
+export function isExtensionSender(sender) {
+  const base = chrome.runtime.getURL('');
+  return Boolean(sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(base));
+}
+
+export function pausePatch(paused, statusMessage = '') {
+  return { inferencePaused: paused, statusMessage: paused ? (statusMessage || 'Inference is paused; posts remain visible.') : '' };
+}
+
+export function authFailureMessage(status) {
+  return status === 403
+    ? 'The Gateway key or team lacks access to this model. Check AI Gateway model/provider allowlists and credits.'
+    : 'The selected API key was rejected. Update it in Options.';
+}
+
+export function usageForToday(usage, now = Date.now()) {
+  const day = new Date(now).toISOString().slice(0, 10);
+  return usage?.day === day ? usage : { day, dayAttempts: 0 };
 }
 
 function isContentSender(sender) {
@@ -87,9 +103,9 @@ async function storageGet(area, keys) {
 
 async function initialize() {
   if (runtime.initialized) return runtime.initialized;
-  runtime.initialized = (async () => {
+  const initialization = (async () => {
     await chrome.storage.local.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
-    await chrome.storage.session.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
+    await chrome.storage.session?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
     const stored = (await storageGet('local', [SETTINGS_KEY]))[SETTINGS_KEY];
     const parsedSettings = sanitizeSettings(stored);
     runtime.settings = parsedSettings ?? { ...clone(DEFAULT_SETTINGS), statusMessage: stored ? 'Stored settings were invalid; affected sites were disabled.' : '' };
@@ -106,7 +122,13 @@ async function initialize() {
     await storageSet('session', { [LEASE_KEY]: leases });
     await reconcileRegistrations();
   })();
-  return runtime.initialized;
+  let tracked;
+  tracked = initialization.catch(error => {
+    if (runtime.initialized === tracked) runtime.initialized = null;
+    throw error;
+  });
+  runtime.initialized = tracked;
+  return tracked;
 }
 
 function serializedWrite(fn) {
@@ -124,7 +146,7 @@ function registrationId(siteId) {
 }
 
 function matchesForSite(site) {
-  return site.paths.map(path => `${site.origin}${path}*`);
+  return site.paths.flatMap(path => [`${site.origin}${path}`, `${site.origin}${path}/*`]);
 }
 
 async function hasPermission(origin) {
@@ -394,15 +416,15 @@ async function dispatch(task) {
   const claimed = await setLease(leaseKey, { startedAt: Date.now(), tabId: task.sender.tab.id, requestId: request.requestId, settingsRevision: settings.revision });
   if (!claimed) return bindingResult(request, statusResult('error', { code: 'in_flight' }));
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort('timeout'), REQUEST_TIMEOUT_MS);
   runtime.controllers.set(request.requestId, controller);
   try {
     const credential = await getCredential(transport);
     if (!credential) { rememberStatus('missing_key'); return bindingResult(request, statusResult('error', { code: 'missing_key' })); }
-    const reservation = await reserveUsage(settings);
-    if (!reservation.ok) { rememberStatus(reservation.error.code); return bindingResult(request, statusResult('error', reservation.error)); }
     const finalCheck = await finalDispatchCheck(task, transport);
     if (!finalCheck.ok) { rememberStatus(finalCheck.reason); return bindingResult(request, statusResult('error', { code: finalCheck.reason })); }
+    const reservation = await reserveUsage(settings);
+    if (!reservation.ok) { rememberStatus(reservation.error.code); return bindingResult(request, statusResult('error', reservation.error)); }
     const state = JSON.stringify({ site: task.site.id, post_text: request.postText, truncated: false });
     const response = await fetch(transport.endpoint, {
       method: 'POST',
@@ -413,7 +435,7 @@ async function dispatch(task) {
       signal: controller.signal
     });
     if (response.status === 401 || response.status === 403) {
-      await pauseInference('The selected API key was rejected. Update it in Options.');
+      await pauseInference(authFailureMessage(response.status));
       return bindingResult(request, statusResult('error', { code: response.status === 401 ? 'unauthorized' : 'forbidden' }));
     }
     if (response.status === 429) {
@@ -441,8 +463,9 @@ async function dispatch(task) {
     if (currentSettings().revision !== settings.revision) return bindingResult(request, statusResult('error', { code: 'disabled' }));
     return bindingResult(request, result);
   } catch (error) {
-    rememberStatus(error?.name === 'AbortError' ? 'timeout' : 'offline');
-    return bindingResult(request, statusResult('error', { code: error?.name === 'AbortError' ? 'timeout' : 'offline' }));
+    const code = error?.name === 'AbortError' ? (controller.signal.reason === 'timeout' ? 'timeout' : 'disabled') : 'offline';
+    if (code !== 'disabled') rememberStatus(code);
+    return bindingResult(request, statusResult('error', { code }));
   } finally {
     clearTimeout(timeout);
     runtime.controllers.delete(request.requestId);
@@ -458,21 +481,13 @@ async function putCache(key, result) {
   await storageSet('session', { [CACHE_KEY]: serialized });
 }
 
-async function setPaused(message) {
-  const next = mergeSettings(currentSettings(), { inferencePaused: true, statusMessage: message });
-  if (!next) return;
-  runtime.settings = next;
-  await storageSet('local', { [SETTINGS_KEY]: next });
-  await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(next) });
-}
-
 async function broadcast(message) {
   for (const tabId of runtime.connectedTabs.keys()) {
     try { await chrome.tabs.sendMessage(tabId, message); } catch { runtime.connectedTabs.delete(tabId); }
   }
 }
 
-async function saveSettings(message) {
+async function saveSettingsUnlocked(message) {
   const current = currentSettings();
   if (message.expectedRevision !== current.revision) return { ok: false, error: redactedError('invalid_message', 'stale_settings') };
   const next = mergeSettings(current, message.patch);
@@ -501,12 +516,30 @@ async function saveSettings(message) {
   return { ok: true, settings: publicSettings(next) };
 }
 
+async function saveSettings(message) {
+  return serializedWrite(() => saveSettingsUnlocked(message));
+}
+
 async function pauseInference(message) {
-  const next = mergeSettings(currentSettings(), { inferencePaused: message.paused !== false, statusMessage: message.paused === false ? '' : 'Inference is paused; posts remain visible.' });
+  const statusMessage = typeof message === 'string' ? message : '';
+  const next = mergeSettings(currentSettings(), pausePatch(true, statusMessage));
   if (!next) return { ok: false, error: redactedError('invalid_message', 'pause') };
   for (const controller of runtime.controllers.values()) controller.abort();
   runtime.queue.splice(0).forEach(task => task.resolve(bindingResult(task.request, statusResult('error', { code: 'paused' }))));
   runtime.settings = next;
+  runtime.lastStatus = statusMessage;
+  await storageSet('local', { [SETTINGS_KEY]: next });
+  await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(next) });
+  return { ok: true, settings: publicSettings(next) };
+}
+
+async function setPaused(message) {
+  if (typeof message?.paused !== 'boolean') return { ok: false, error: redactedError('invalid_message', 'pause') };
+  if (message.paused) return pauseInference('Inference is paused; posts remain visible.');
+  const next = mergeSettings(currentSettings(), pausePatch(false));
+  if (!next) return { ok: false, error: redactedError('invalid_message', 'pause') };
+  runtime.settings = next;
+  runtime.lastStatus = '';
   await storageSet('local', { [SETTINGS_KEY]: next });
   await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(next) });
   return { ok: true, settings: publicSettings(next) };
@@ -534,6 +567,7 @@ async function enableSite(message) {
   await storageSet('local', { [SETTINGS_KEY]: next });
   await registerSite(site);
   await injectExistingTabs(site);
+  await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(next) });
   return { ok: true, settings: publicSettings(next) };
 }
 
@@ -549,7 +583,8 @@ async function disableSite(message) {
   await storageSet('local', { [SETTINGS_KEY]: next });
   await unregisterSite(site.id);
   await removeInjectedStyles(site);
-  await broadcast({ type: 'TEARDOWN', reason: 'disabled' });
+  await broadcast({ type: 'TEARDOWN', reason: 'disabled', siteId: site.id });
+  await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(next) });
   return { ok: true, settings: publicSettings(next) };
 }
 
@@ -563,13 +598,14 @@ async function statusForSender(sender, message) {
   const url = tab?.url ?? '';
   const site = siteForUrl(url, settings);
   const local = await storageGet('local', [USAGE_KEY, COOLDOWN_KEY]);
+  const usage = usageForToday(local[USAGE_KEY]);
     return {
     ok: true,
     site: site?.id ?? null,
     enabled: Boolean(site),
     settings: publicSettings(settings),
     pending: tab?.id == null ? 0 : tabPendingCount(tab.id),
-    usage: local[USAGE_KEY] ?? null,
+    usage,
     cooldown: local[COOLDOWN_KEY]?.until > Date.now() ? local[COOLDOWN_KEY] : null,
     cacheHits: runtime.cacheHits,
     statusMessage: runtime.lastStatus || settings.statusMessage
@@ -617,12 +653,13 @@ async function handleMessage(message, sender) {
 }
 
 function boot() {
+  const report = context => error => console.error(`Unslopify ${context} failed:`, error);
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleMessage(message, sender).then(sendResponse).catch(error => sendResponse({ ok: false, error: redactedError('server_error', error.message) }));
     return true;
   });
-  chrome.runtime.onStartup.addListener(() => { runtime.initialized = null; initialize(); });
-  chrome.runtime.onInstalled.addListener(() => { runtime.initialized = null; initialize(); });
+  chrome.runtime.onStartup.addListener(() => { initialize().catch(report('startup')); });
+  chrome.runtime.onInstalled.addListener(() => { initialize().catch(report('installation')); });
   chrome.permissions.onRemoved.addListener(({ origins = [] }) => {
     initialize().then(async () => {
       for (const site of [...Object.values(BUILTIN_SITES), ...runtime.settings.customSites]) {
@@ -631,14 +668,15 @@ function boot() {
           await unregisterSite(site.id);
           await removeInjectedStyles(site);
           await disableSiteWithoutPermission(site.id);
-          await broadcast({ type: 'TEARDOWN', reason: 'permission_removed' });
+          await broadcast({ type: 'TEARDOWN', reason: 'permission_removed', siteId: site.id });
+          await broadcast({ type: 'SETTINGS_CHANGED', settings: publicSettings(runtime.settings) });
         }
       }
-    });
+    }).catch(report('permission reconciliation'));
   });
-  initialize();
+  initialize().catch(report('initialization'));
 }
 
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) boot();
 
-export { handleClassify, validateContentRequest, reserveUsage };
+export { handleClassify, handleMessage, validateContentRequest, reserveUsage };

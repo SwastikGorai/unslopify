@@ -23,7 +23,8 @@ import {
   validateJevResponse
 } from '../src/shared/contracts.js';
 import { evaluatePolicy } from '../src/shared/policy.js';
-import { dispatchBlockReason, leaseBlocksDispatch, restoreDispatchLeases } from '../src/background/service-worker.js';
+import { authFailureMessage, dispatchBlockReason, handleMessage, isExtensionSender, leaseBlocksDispatch, pausePatch, restoreDispatchLeases, usageForToday } from '../src/background/service-worker.js';
+import { isSettingsReady, messageFailure, responseDetail } from '../src/options/state.js';
 
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/linkedin-posts.json', import.meta.url), 'utf8'));
 const fixtureHtml = await readFile(new URL('./fixtures/linkedin-feed.html', import.meta.url), 'utf8');
@@ -127,7 +128,7 @@ const fixtureNode = (tagName, attributes, text) => new FixtureNode(tagName, attr
 const linkedin = BUILTIN_SITES.linkedin;
 
 function fixtureFeed() {
-  const root = fixtureNode('main');
+  const root = fixtureNode('main', { 'data-testid': 'mainFeed' });
   const useful = fixtureNode('div', { 'data-urn': 'urn:li:activity:fixture-useful' });
   useful.append(
     fixtureNode('div', { class: 'feed-shared-update-v2__description' }, fixtures[0].text),
@@ -239,6 +240,11 @@ const tests = [
     assert.equal(usefulResult.text, fixtures[0].text);
     assert.equal(baitResult.text, fixtures[1].text);
     assert.equal(baitResult.truncated, false);
+
+    const modern = fixtureNode('div', { role: 'listitem' });
+    modern.append(fixtureNode('span', { 'data-testid': 'expandable-text-box' }, fixtures[1].text));
+    const modernRoot = fixtureNode('main', { 'data-testid': 'mainFeed' }).append(modern);
+    assert.equal(extractor.extractCard(modern, linkedin, modernRoot, 'https://www.linkedin.com').text, fixtures[1].text);
     assert.equal(root.querySelector('aside') && extractor.extractCard(root.querySelector('aside'), linkedin, root, 'https://www.linkedin.com'), null);
     assert.equal(root.querySelector('form') && extractor.extractCard(root.querySelector('form'), linkedin, root, 'https://www.linkedin.com'), null);
 
@@ -278,7 +284,9 @@ const tests = [
   }],
   ['text eligibility keeps short, non-English, and media-only posts visible', () => {
     assert.equal(isEligibleText('A concrete English post with enough detail.'), true);
+    assert.equal(extractor.isEligibleText('A concrete English post with enough detail.'), true);
     assert.equal(isEligibleText('short'), false);
+    assert.equal(extractor.isEligibleText('short'), false);
     assert.equal(isEligibleText('यह एक हिंदी पोस्ट है जिसमें पर्याप्त पाठ है।'), false);
   }],
   ['sanitized LinkedIn fixture includes explicit excluded regions', () => {
@@ -286,6 +294,61 @@ const tests = [
     assert.match(fixtureHtml, /Comment GROWTH/);
     assert.match(fixtureHtml, /Sidebar text must never be sent/gu);
     assert.match(fixtureHtml, /A typed draft must never be sent/gu);
+  }],
+  ['options stay guarded while settings load and preserve message failure detail', () => {
+    assert.equal(isSettingsReady(undefined), false);
+    assert.equal(isSettingsReady({}), false);
+    assert.equal(isSettingsReady({ revision: 1 }), false);
+    assert.equal(isSettingsReady(DEFAULT_SETTINGS), true);
+    assert.equal(responseDetail(undefined, 'worker unavailable'), 'worker unavailable');
+    assert.equal(responseDetail({ error: { code: 'server_error' } }, 'worker unavailable'), 'server_error');
+    assert.equal(responseDetail({ error: { detail: 'storage unavailable' } }, 'worker unavailable'), 'storage unavailable');
+    assert.equal(messageFailure(new Error('Receiving end does not exist.'), 'GET_SETTINGS'), 'GET_SETTINGS: Receiving end does not exist.');
+    assert.equal(messageFailure(undefined, 'SAVE_SETTINGS'), 'SAVE_SETTINGS: No response from the extension service worker.');
+  }],
+  ['extension messages, pause state, usage dates, and scoped teardown are stable', () => {
+    globalThis.chrome = { runtime: { id: 'extension-id', getURL: path => `chrome-extension://extension-id/${path}` } };
+    assert.equal(isExtensionSender({ id: 'extension-id', tab: { id: 1 }, url: 'chrome-extension://extension-id/options/options.html' }), true);
+    assert.equal(isExtensionSender({ id: 'extension-id', tab: { id: 2 }, url: 'https://www.linkedin.com/feed/' }), false);
+    assert.equal(isExtensionSender({ id: 'other-extension', url: 'chrome-extension://other-extension/options.html' }), false);
+    assert.deepEqual(pausePatch(false), { inferencePaused: false, statusMessage: '' });
+    assert.deepEqual(pausePatch(true, 'The selected API key was rejected. Update it in Options.'), { inferencePaused: true, statusMessage: 'The selected API key was rejected. Update it in Options.' });
+    assert.match(authFailureMessage(401), /key was rejected/u);
+    assert.match(authFailureMessage(403), /lacks access/u);
+    assert.equal(usageForToday({ day: '2020-01-01', dayAttempts: 9 }, Date.parse('2026-09-19T12:00:00Z')).dayAttempts, 0);
+    assert.equal(usageForToday({ day: '2026-09-19', dayAttempts: 3 }, Date.parse('2026-09-19T12:00:00Z')).dayAttempts, 3);
+    assert.equal(extractor.shouldTeardown({ type: 'TEARDOWN', siteId: 'x' }, 'linkedin'), false);
+    assert.equal(extractor.shouldTeardown({ type: 'TEARDOWN', siteId: 'linkedin' }, 'linkedin'), true);
+    delete globalThis.chrome;
+  }],
+  ['options messages reach the real worker and pause can resume', async () => {
+    const stores = { local: {}, session: {} };
+    const area = name => ({
+      async get(keys) { return Object.fromEntries(keys.filter(key => Object.hasOwn(stores[name], key)).map(key => [key, stores[name][key]])); },
+      async set(values) { Object.assign(stores[name], values); },
+      async setAccessLevel() {}
+    });
+    globalThis.chrome = {
+      runtime: { id: 'extension-id', getURL: path => `chrome-extension://extension-id/${path}` },
+      storage: { local: area('local'), session: area('session') },
+      permissions: { async contains() { return false; } },
+      scripting: {
+        async getRegisteredContentScripts() { return []; },
+        async unregisterContentScripts() {},
+        async registerContentScripts() {}
+      },
+      tabs: { async sendMessage() {} }
+    };
+    const sender = { id: 'extension-id', tab: { id: 1 }, url: 'chrome-extension://extension-id/options/options.html' };
+    const loaded = await handleMessage({ type: 'GET_SETTINGS' }, sender);
+    assert.equal(loaded.ok, true);
+    assert.equal(isSettingsReady(loaded.settings), true);
+    assert.equal((await handleMessage({ type: 'SET_CREDENTIAL', transport: 'gateway', key: 'vck_example_key' }, sender)).ok, true);
+    const paused = await handleMessage({ type: 'PAUSE_INFERENCE', paused: true }, sender);
+    assert.equal(paused.settings.inferencePaused, true);
+    const resumed = await handleMessage({ type: 'PAUSE_INFERENCE', paused: false }, sender);
+    assert.equal(resumed.settings.inferencePaused, false);
+    delete globalThis.chrome;
   }]
 ];
 
