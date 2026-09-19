@@ -1,12 +1,13 @@
 import { performance } from 'node:perf_hooks';
 import { validateJevResponse, RUBRIC_VERSION, buildQuestions } from '../src/shared/contracts.js';
+import { evaluateWithGateway } from '../src/background/gateway.js';
 
 const transport = process.env.JEV_TRANSPORT || 'gateway';
 const deterministic = transport === 'deterministic';
 const key = transport === 'direct' ? process.env.TYPESAFE_API_KEY : process.env.AI_GATEWAY_API_KEY;
 const endpoint = transport === 'direct'
   ? 'https://api.typesafe.ai/v1/systemone'
-  : 'https://ai-gateway.vercel.sh/typesafe/v1/systemone';
+  : '';
 const model = transport === 'direct' ? 'jev-latest' : 'typesafe-ai/jev';
 
 if (deterministic) {
@@ -44,23 +45,28 @@ if (!key) {
   process.exit(0);
 }
 
-const state = JSON.stringify({
+const state = {
   site: 'linkedin',
   post_text: 'Comment GROWTH and I will DM you the secret framework.',
   truncated: false
-});
+};
 const payload = { model, state, questions: buildQuestions(['engagement_bait']) };
 const started = performance.now();
-const response = await fetch(endpoint, {
-  method: 'POST',
-  headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-  body: JSON.stringify(payload),
-  credentials: 'omit',
-  redirect: 'error',
-  signal: AbortSignal.timeout(10_000)
-});
-const body = await response.json().catch(() => null);
-if (!response.ok) throw new Error(`Jev returned HTTP ${response.status}`);
+let body;
+if (transport === 'gateway') {
+  body = await evaluateWithGateway({ apiKey: key, ...payload, signal: AbortSignal.timeout(10_000) });
+} else {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ ...payload, state: JSON.stringify(state) }),
+    credentials: 'omit',
+    redirect: 'error',
+    signal: AbortSignal.timeout(10_000)
+  });
+  body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`Jev returned HTTP ${response.status}`);
+}
 const validated = validateJevResponse(body, ['engagement_bait']);
 if (!validated.ok) throw new Error(`Invalid Jev response: ${validated.error}`);
 

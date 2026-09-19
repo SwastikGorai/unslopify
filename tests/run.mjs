@@ -7,6 +7,7 @@ import {
   DEFAULT_SETTINGS,
   MAX_MESSAGE_BYTES,
   PROTOCOL_VERSION,
+  TRANSPORTS,
   buildQuestions,
   byteLength,
   classifyGate,
@@ -25,6 +26,7 @@ import {
 import { evaluatePolicy } from '../src/shared/policy.js';
 import { authFailureMessage, dispatchBlockReason, handleMessage, isExtensionSender, leaseBlocksDispatch, pausePatch, restoreDispatchLeases, usageForToday } from '../src/background/service-worker.js';
 import { isSettingsReady, messageFailure, responseDetail } from '../src/options/state.js';
+import { gatewayResult } from '../src/background/gateway.js';
 
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/linkedin-posts.json', import.meta.url), 'utf8'));
 const fixtureHtml = await readFile(new URL('./fixtures/linkedin-feed.html', import.meta.url), 'utf8');
@@ -156,6 +158,7 @@ const tests = [
     const settings = sanitizeSettings(DEFAULT_SETTINGS);
     assert.equal(settings.selectedTransport, 'gateway');
     assert.equal(settings.model, 'typesafe-ai/jev');
+    assert.equal(TRANSPORTS.gateway.endpoint, 'https://ai-gateway.vercel.sh/v1/evaluate');
     assert.equal(sanitizeSettings({ ...DEFAULT_SETTINGS, schemaVersion: 99 }), null);
     const direct = mergeSettings(settings, { selectedTransport: 'direct' });
     assert.equal(direct.model, 'jev-latest');
@@ -190,6 +193,9 @@ const tests = [
     assert.equal(result.answers.engagement_bait.choice, 'present');
     assert.equal(validateJevResponse({ answers: { engagement_bait: { ...answer, probabilities: { present: 1 } } } }, ['engagement_bait']).ok, false);
     assert.equal(validateJevResponse({ answers: { engagement_bait: { ...answer, choice: 'other' } } }, ['engagement_bait']).ok, false);
+    const sdkResult = gatewayResult({ response: { modelId: 'typesafe-ai/jev' }, answers: { engagement_bait: { type: 'choice', choice: 'present', probabilities: answer.probabilities } }, usage: { inputTokens: 12, outputTokens: 3 } }, 'typesafe-ai/jev');
+    assert.equal(sdkResult.answers.engagement_bait.confidence, 0.95);
+    assert.equal(validateJevResponse(sdkResult, ['engagement_bait']).usage.inputTokens, 12);
   }],
   ['policy gates only present, high-confidence categories', () => {
     const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, categoryToggles: { engagement_bait: true, generic_filler: false, empty_hype: false } });

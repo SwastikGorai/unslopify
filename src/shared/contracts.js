@@ -11,7 +11,7 @@ export const TRANSPORTS = Object.freeze({
   gateway: Object.freeze({
     id: 'gateway',
     label: 'Vercel AI Gateway',
-    endpoint: 'https://ai-gateway.vercel.sh/typesafe/v1/systemone',
+    endpoint: 'https://ai-gateway.vercel.sh/v1/evaluate',
     model: 'typesafe-ai/jev',
     credentialName: 'AI Gateway API key',
     origin: 'https://ai-gateway.vercel.sh'
@@ -347,8 +347,8 @@ export function validateJevResponse(data, expectedIds) {
 function sanitizeUsage(usage) {
   if (!isRecord(usage)) return undefined;
   return {
-    inputTokens: Number.isInteger(usage.input_tokens) && usage.input_tokens >= 0 ? usage.input_tokens : undefined,
-    outputTokens: Number.isInteger(usage.output_tokens) && usage.output_tokens >= 0 ? usage.output_tokens : undefined
+    inputTokens: Number.isInteger(usage.inputTokens ?? usage.input_tokens) && (usage.inputTokens ?? usage.input_tokens) >= 0 ? usage.inputTokens ?? usage.input_tokens : undefined,
+    outputTokens: Number.isInteger(usage.outputTokens ?? usage.output_tokens) && (usage.outputTokens ?? usage.output_tokens) >= 0 ? usage.outputTokens ?? usage.output_tokens : undefined
   };
 }
 

@@ -24,6 +24,7 @@ import {
   validateClassifyRequest,
   validateJevResponse
 } from '../shared/contracts.js';
+import { evaluateWithGateway, gatewayErrorStatus } from './gateway.js';
 
 const SETTINGS_KEY = 'settings';
 const USAGE_KEY = 'usage';
@@ -425,35 +426,39 @@ async function dispatch(task) {
     if (!finalCheck.ok) { rememberStatus(finalCheck.reason); return bindingResult(request, statusResult('error', { code: finalCheck.reason })); }
     const reservation = await reserveUsage(settings);
     if (!reservation.ok) { rememberStatus(reservation.error.code); return bindingResult(request, statusResult('error', reservation.error)); }
-    const state = JSON.stringify({ site: task.site.id, post_text: request.postText, truncated: false });
-    const response = await fetch(transport.endpoint, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: transport.model, state, questions: buildQuestions(categories) }),
-      credentials: 'omit',
-      redirect: 'error',
-      signal: controller.signal
-    });
-    if (response.status === 401 || response.status === 403) {
-      await pauseInference(authFailureMessage(response.status));
-      return bindingResult(request, statusResult('error', { code: response.status === 401 ? 'unauthorized' : 'forbidden' }));
-    }
-    if (response.status === 429) {
-      const retryAfter = Number(response.headers.get('retry-after'));
-      await setCooldown('rate_limited', Number.isFinite(retryAfter) && retryAfter >= 1 ? retryAfter : 60);
-      rememberStatus('rate_limited');
-      return bindingResult(request, statusResult('error', { code: 'rate_limited' }));
-    }
-    if (response.status >= 500) { rememberStatus('server_error'); return bindingResult(request, statusResult('error', { code: 'server_error', detail: `http_${response.status}` })); }
-    if (!response.ok) { rememberStatus('server_error'); return bindingResult(request, statusResult('error', { code: 'server_error', detail: `http_${response.status}` })); }
-    const contentLength = Number(response.headers.get('content-length'));
-    if (Number.isFinite(contentLength) && contentLength > 1_048_576) { rememberStatus('invalid_response'); return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'response_too_large' })); }
-    const bodyText = await response.text();
-    if (bodyText.length > 1_048_576) { rememberStatus('invalid_response'); return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'response_too_large' })); }
+    const state = { site: task.site.id, post_text: request.postText, truncated: false };
     let body;
-    try { body = JSON.parse(bodyText); } catch {
-      rememberStatus('invalid_response');
-      return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'invalid_json' }));
+    if (transport.id === 'gateway') {
+      body = await evaluateWithGateway({ apiKey: credential, model: transport.model, state, questions: buildQuestions(categories), signal: controller.signal });
+    } else {
+      const response = await fetch(transport.endpoint, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: transport.model, state: JSON.stringify(state), questions: buildQuestions(categories) }),
+        credentials: 'omit',
+        redirect: 'error',
+        signal: controller.signal
+      });
+      if (response.status === 401 || response.status === 403) {
+        await pauseInference(authFailureMessage(response.status));
+        return bindingResult(request, statusResult('error', { code: response.status === 401 ? 'unauthorized' : 'forbidden' }));
+      }
+      if (response.status === 429) {
+        const retryAfter = Number(response.headers.get('retry-after'));
+        await setCooldown('rate_limited', Number.isFinite(retryAfter) && retryAfter >= 1 ? retryAfter : 60);
+        rememberStatus('rate_limited');
+        return bindingResult(request, statusResult('error', { code: 'rate_limited' }));
+      }
+      if (response.status >= 500) { rememberStatus('server_error'); return bindingResult(request, statusResult('error', { code: 'server_error', detail: `http_${response.status}` })); }
+      if (!response.ok) { rememberStatus('server_error'); return bindingResult(request, statusResult('error', { code: 'server_error', detail: `http_${response.status}` })); }
+      const contentLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(contentLength) && contentLength > 1_048_576) { rememberStatus('invalid_response'); return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'response_too_large' })); }
+      const bodyText = await response.text();
+      if (bodyText.length > 1_048_576) { rememberStatus('invalid_response'); return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'response_too_large' })); }
+      try { body = JSON.parse(bodyText); } catch {
+        rememberStatus('invalid_response');
+        return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: 'invalid_json' }));
+      }
     }
     const validated = validateJevResponse(body, categories);
     if (!validated.ok) { rememberStatus('invalid_response'); return bindingResult(request, statusResult('error', { code: 'invalid_response', detail: validated.error })); }
@@ -463,6 +468,16 @@ async function dispatch(task) {
     if (currentSettings().revision !== settings.revision) return bindingResult(request, statusResult('error', { code: 'disabled' }));
     return bindingResult(request, result);
   } catch (error) {
+    const status = gatewayErrorStatus(error);
+    if (status === 401 || status === 403) {
+      await pauseInference(authFailureMessage(status));
+      return bindingResult(request, statusResult('error', { code: status === 401 ? 'unauthorized' : 'forbidden' }));
+    }
+    if (status === 429) {
+      await setCooldown('rate_limited', 60);
+      rememberStatus('rate_limited');
+      return bindingResult(request, statusResult('error', { code: 'rate_limited' }));
+    }
     const code = error?.name === 'AbortError' ? (controller.signal.reason === 'timeout' ? 'timeout' : 'disabled') : 'offline';
     if (code !== 'disabled') rememberStatus(code);
     return bindingResult(request, statusResult('error', { code }));
