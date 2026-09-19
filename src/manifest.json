@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "102",
+  "name": "Unslopify",
+  "version": "0.1.0",
+  "description": "Labels configurable low-value feed patterns without claiming AI authorship.",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://ai-gateway.vercel.sh/*"
+  ],
+  "optional_host_permissions": [
+    "https://api.typesafe.ai/*",
+    "https://www.linkedin.com/*",
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Unslopify"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

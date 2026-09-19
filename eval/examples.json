@@ -1,0 +1,14 @@
+[
+  {"id":"dev-01","split":"development","site":"linkedin","text":"Comment GROWTH and I will DM you the secret framework.","desired":"filter","category":"engagement_bait","uncertain":false,"source":"synthetic"},
+  {"id":"dev-02","split":"development","site":"linkedin","text":"We cut checkout latency by 17% after moving image processing off the request path; benchmark details are attached.","desired":"keep","category":"none","uncertain":false,"source":"synthetic"},
+  {"id":"dev-03","split":"development","site":"linkedin","text":"Like this post if you agree. Share it with three founders so the algorithm sees it.","desired":"filter","category":"engagement_bait","uncertain":false,"source":"synthetic"},
+  {"id":"dev-04","split":"development","site":"linkedin","text":"A short note: our team shipped the migration today after six weeks of testing.","desired":"keep","category":"none","uncertain":false,"source":"synthetic"},
+  {"id":"dev-05","split":"development","site":"linkedin","text":"Success is a journey. Believe in yourself. Keep pushing forward every day.","desired":"filter","category":"generic_filler","uncertain":false,"source":"synthetic"},
+  {"id":"dev-06","split":"development","site":"linkedin","text":"Here is the SQL query we used to find duplicate invoices, including the index that made it fast.","desired":"keep","category":"none","uncertain":false,"source":"synthetic"},
+  {"id":"dev-07","split":"development","site":"linkedin","text":"The most revolutionary platform ever. Nothing else comes close. Try it now.","desired":"filter","category":"empty_hype","uncertain":false,"source":"synthetic"},
+  {"id":"dev-08","split":"development","site":"linkedin","text":"I am still learning English, but this small checklist helped me debug our deploy.","desired":"keep","category":"none","uncertain":false,"source":"synthetic"},
+  {"id":"holdout-01","split":"heldout","site":"linkedin","text":"Comment DATA and I will send the complete playbook privately.","desired":"filter","category":"engagement_bait","uncertain":false,"source":"synthetic"},
+  {"id":"holdout-02","split":"heldout","site":"linkedin","text":"A useful introduction to queues with a runnable example and failure cases.","desired":"keep","category":"none","uncertain":false,"source":"synthetic"},
+  {"id":"holdout-03","split":"heldout","site":"linkedin","text":"The future is bright. We are changing everything. Watch this space.","desired":"filter","category":"empty_hype","uncertain":false,"source":"synthetic"},
+  {"id":"holdout-04","split":"heldout","site":"linkedin","text":"Can someone recommend a good book on distributed systems? I am comparing two options.","desired":"keep","category":"none","uncertain":true,"source":"synthetic"}
+]

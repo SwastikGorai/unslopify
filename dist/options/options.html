@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Unslopify options</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <h1>Unslopify</h1>
+      <p class="lede">A configurable quality filter. It does not detect who used AI.</p>
+      <p id="status" role="status" aria-live="polite"></p>
+
+      <section aria-labelledby="transport-title">
+        <h2 id="transport-title">Inference</h2>
+        <p id="disclosure" class="notice"></p>
+        <label><input id="consent" type="checkbox"> I understand that eligible feed text is sent to the selected recipient route for classification.</label>
+        <fieldset>
+          <legend>Recipient route</legend>
+          <label><input type="radio" name="transport" value="gateway"> Vercel AI Gateway</label>
+          <label><input type="radio" name="transport" value="direct"> TypeSafe direct</label>
+        </fieldset>
+        <label for="api-key">Session API key</label>
+        <div class="key-row">
+          <input id="api-key" type="password" autocomplete="off" spellcheck="false" inputmode="text">
+          <button id="save-key" type="button">Save for this session</button>
+        </div>
+        <small>The key stays in restricted extension session storage and is cleared when the browser restarts. It is never sent to pages.</small>
+      </section>
+
+      <section aria-labelledby="sites-title">
+        <h2 id="sites-title">Sites</h2>
+        <p>Enabling a site requests access only to that exact origin and feed route.</p>
+        <div id="sites"></div>
+      </section>
+
+      <section aria-labelledby="rules-title">
+        <h2 id="rules-title">Labels</h2>
+        <p>Posts stay visible while pending or uncertain. Collapse is off by default and remains reversible.</p>
+        <fieldset>
+          <legend>Categories</legend>
+          <label><input type="checkbox" data-category="engagement_bait"> Engagement bait</label>
+          <label><input type="checkbox" data-category="generic_filler"> Generic filler</label>
+          <label><input type="checkbox" data-category="empty_hype"> Empty hype</label>
+        </fieldset>
+        <fieldset>
+          <legend>Display mode</legend>
+          <label><input type="radio" name="mode" value="label"> Label only</label>
+          <label><input type="radio" name="mode" value="collapse"> Collapse with “Show post”</label>
+        </fieldset>
+        <div class="grid">
+          <label>Present probability <input id="probability" type="number" min="0" max="1" step="0.01"></label>
+          <label>Confidence <input id="confidence" type="number" min="0" max="1" step="0.01"></label>
+        </div>
+        <button id="save-settings" type="button">Save settings</button>
+        <label for="allowlist">Local post/author allowlist (one stable ID per line)</label>
+        <textarea id="allowlist" rows="3" spellcheck="false"></textarea>
+        <button id="save-allowlist" type="button">Save allowlist</button>
+      </section>
+
+      <section aria-labelledby="custom-title">
+        <h2 id="custom-title">Advanced site rule</h2>
+        <p>Rules use exact HTTPS origins and CSS selectors only. No scripts or remote rules are accepted.</p>
+        <div class="grid">
+          <label>ID <input id="custom-id" placeholder="my-feed" maxlength="40"></label>
+          <label>Label <input id="custom-label" placeholder="My feed" maxlength="80"></label>
+          <label>Origin <input id="custom-origin" placeholder="https://example.com"></label>
+          <label>Path prefix <input id="custom-path" value="/feed"></label>
+          <label>Feed root selector <input id="custom-root" placeholder="main"></label>
+          <label>Post selector <input id="custom-post" placeholder="article"></label>
+          <label>Body selector <input id="custom-body" placeholder="[data-post-body]"></label>
+          <label>Permalink selector <input id="custom-permalink" placeholder="a[href*='/posts/']"></label>
+        </div>
+        <button id="add-custom" type="button">Add rule</button>
+        <div id="custom-rules"></div>
+        <pre id="preview-output" aria-live="polite"></pre>
+        <div class="key-row">
+          <button id="export-settings" type="button">Export non-secret settings</button>
+          <label class="file-button">Import settings <input id="import-settings" type="file" accept="application/json"></label>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

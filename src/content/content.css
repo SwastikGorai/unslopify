@@ -1,0 +1,21 @@
+.unslopify-control {
+  box-sizing: border-box;
+  display: block;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px solid #7c3aed;
+  border-radius: 6px;
+  background: #faf5ff;
+  color: #4c1d95;
+  font: 600 12px/1.4 system-ui, sans-serif;
+}
+
+button.unslopify-control {
+  cursor: pointer;
+  text-align: left;
+}
+
+button.unslopify-control:focus-visible {
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
+}

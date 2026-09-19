@@ -1,0 +1,3 @@
+# Offline evaluation report
+
+The repository contains 8 development and 4 held-out synthetic boundary examples. They are fixtures for exercising the rubric and report code, not evidence of production quality or live Jev behavior. The deterministic `JEV_TRANSPORT=deterministic node eval/run.mjs` path validates one typed answer locally without network access; it is test-only and is not part of the extension. No predictions, credentials, or feed posts were available during implementation, so precision, recall, latency, and token usage are currently **not run**. Run `EVAL_PREDICTIONS=path/to/redacted.json npm run eval:local` after human labels and real-inference evidence are approved; tune only on development rows and keep the held-out rows untouched.

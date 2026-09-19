@@ -1,0 +1,23 @@
+[
+  {
+    "id": "urn:li:activity:fixture-useful",
+    "text": "We measured a 17% reduction in checkout latency by moving image processing off the request path and included the benchmark in the comments.",
+    "truncated": false,
+    "contextUncertain": false,
+    "expected": "absent"
+  },
+  {
+    "id": "urn:li:activity:fixture-bait",
+    "text": "Comment GROWTH and I will DM you the secret framework.",
+    "truncated": false,
+    "contextUncertain": false,
+    "expected": "present"
+  },
+  {
+    "id": "urn:li:activity:fixture-truncated",
+    "text": "The details are below...",
+    "truncated": true,
+    "contextUncertain": true,
+    "expected": "unsupported"
+  }
+]
