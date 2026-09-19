@@ -1,8 +1,71 @@
-:root { font: 14px/1.4 system-ui, sans-serif; color-scheme: light dark; }
-body { min-width: 250px; margin: 0; background: #fff; color: #172033; }
+:root {
+  color-scheme: light;
+  --ink: #111;
+  --paper: #f4f0e6;
+  --accent: #c7ff4a;
+  --purple: #b9a7ff;
+  font: 13px/1.4 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 310px;
+  margin: 0;
+  border: 3px solid var(--ink);
+  background:
+    linear-gradient(90deg, rgb(17 17 17 / 5%) 1px, transparent 1px),
+    linear-gradient(rgb(17 17 17 / 5%) 1px, transparent 1px),
+    var(--paper);
+  background-size: 20px 20px;
+  color: var(--ink);
+}
+
 main { padding: 16px; }
-h1 { margin: 0 0 8px; font-size: 1.2rem; }
-p { margin: 8px 0; }
-button { width: 100%; margin-top: 8px; padding: 8px; border: 0; border-radius: 6px; background: #6d28d9; color: white; cursor: pointer; }
-button:focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
-@media (prefers-color-scheme: dark) { body { background: #1e293b; color: #e2e8f0; } }
+
+h1 {
+  width: fit-content;
+  margin: 0 0 16px;
+  padding: 3px 8px;
+  border: 2px solid var(--ink);
+  background: var(--accent);
+  box-shadow: 3px 3px 0 var(--ink);
+  font: 900 1.55rem/1 system-ui, sans-serif;
+  letter-spacing: -.04em;
+  text-transform: uppercase;
+}
+
+p {
+  margin: 0;
+  padding: 9px 10px;
+  border: 2px solid var(--ink);
+  border-bottom: 0;
+  background: #fff;
+  font-weight: 700;
+}
+
+#mode, #usage { background: #f0ebff; }
+#status { border-bottom: 2px solid var(--ink); background: var(--purple); }
+
+button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: 3px 3px 0 var(--ink);
+  color: var(--ink);
+  font: 900 13px/1.4 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+#options { background: #fff; }
+button:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+button:active { transform: translate(3px, 3px); box-shadow: none; }
+button:focus-visible { outline: 4px solid #ff8a00; outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+}
