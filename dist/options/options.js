@@ -1,7 +1,8 @@
-import { BUILTIN_SITES, TRANSPORTS } from '../shared/contracts.js';
+import { BUILTIN_SITES, CATEGORY_DEFINITIONS, MAX_EXAMPLE_LENGTH, MAX_EXAMPLES_PER_OUTCOME, TRANSPORTS } from '../shared/contracts.js';
 import { isSettingsReady, messageFailure, responseDetail } from './state.js';
 
 let settings = null;
+let credentials = {};
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -67,6 +68,7 @@ function renderSites() {
     disable.disabled = !enabled;
     disable.addEventListener('click', () => disableSite(site));
     const mode = document.createElement('select');
+    mode.dataset.siteMode = site.id;
     mode.setAttribute('aria-label', `${site.label} display mode`);
     for (const value of ['label', 'overlay', 'collapse']) {
       const option = document.createElement('option');
@@ -75,8 +77,8 @@ function renderSites() {
       option.selected = (settings.siteModes?.[site.id] || settings.mode) === value;
       mode.append(option);
     }
-    mode.addEventListener('change', () => savePatch({ siteModes: { ...settings.siteModes, [site.id]: mode.value } }));
     const sensitivity = document.createElement('input');
+    sensitivity.dataset.siteThreshold = site.id;
     sensitivity.type = 'number';
     sensitivity.min = '0';
     sensitivity.max = '1';
@@ -84,7 +86,6 @@ function renderSites() {
     sensitivity.value = settings.siteThresholds?.[site.id]?.presentProbability ?? settings.thresholds.presentProbability;
     sensitivity.title = 'Present probability threshold';
     sensitivity.setAttribute('aria-label', `${site.label} present probability threshold`);
-    sensitivity.addEventListener('change', () => savePatch({ siteThresholds: { ...settings.siteThresholds, [site.id]: { ...(settings.siteThresholds?.[site.id] || settings.thresholds), presentProbability: Number(sensitivity.value) } } }));
     actions.append(state, mode, sensitivity, enable, disable);
     row.append(label, actions);
     container.append(row);
@@ -128,8 +129,36 @@ function render() {
   $('#probability').value = settings.thresholds.presentProbability;
   $('#confidence').value = settings.thresholds.confidence;
   $('#allowlist').value = settings.allowlist.join('\n');
+  $('#batch-size').value = settings.batchSize;
+  const transport = $$('input[name="transport"]').find(input => input.checked)?.value || settings.selectedTransport;
+  $('#remember-key').checked = credentials[transport]?.remembered === true;
+  renderExamples();
   renderSites();
   disclosure();
+}
+
+function renderExamples() {
+  const container = $('#category-examples');
+  container.replaceChildren();
+  for (const [id, definition] of Object.entries(CATEGORY_DEFINITIONS)) {
+    const fieldset = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.textContent = definition.label;
+    fieldset.append(legend);
+    for (const [outcome, label] of [['present', 'Should be filtered'], ['absent', 'Should be allowed']]) {
+      const wrapper = document.createElement('label');
+      wrapper.textContent = label;
+      const textarea = document.createElement('textarea');
+      textarea.rows = 4;
+      textarea.spellcheck = false;
+      textarea.dataset.exampleCategory = id;
+      textarea.dataset.exampleOutcome = outcome;
+      textarea.value = settings.categoryExamples[id][outcome].join('\n');
+      wrapper.append(textarea);
+      fieldset.append(wrapper);
+    }
+    container.append(fieldset);
+  }
 }
 
 async function savePatch(patch) {
@@ -182,28 +211,17 @@ async function disableSite(site) {
   }
 }
 
-async function saveKey() {
-  if (!requireSettings()) return;
-  const key = $('#api-key').value.trim();
-  const transport = $$('input[name="transport"]').find(input => input.checked)?.value || settings.selectedTransport;
-  if (!key) { setStatus('Enter a key before saving.', true); return; }
-  if (transport === 'direct') {
-    let granted;
-    try { granted = await chrome.permissions.request({ origins: [`${TRANSPORTS.direct.origin}/*`] }); }
-    catch (error) { setStatus(`Could not request direct TypeSafe permission: ${error.message}`, true); return; }
-    if (!granted) { setStatus('Direct TypeSafe permission was not granted.', true); return; }
+function collectExamples() {
+  const result = Object.fromEntries(Object.keys(CATEGORY_DEFINITIONS).map(id => [id, { present: [], absent: [] }]));
+  for (const textarea of $$('textarea[data-example-category]')) {
+    const examples = textarea.value.split('\n').map(value => value.replace(/\s+/gu, ' ').trim()).filter(Boolean);
+    if (examples.length > MAX_EXAMPLES_PER_OUTCOME || examples.some(example => example.length > MAX_EXAMPLE_LENGTH)) throw new Error(`Use at most ${MAX_EXAMPLES_PER_OUTCOME} examples of ${MAX_EXAMPLE_LENGTH} characters per field.`);
+    result[textarea.dataset.exampleCategory][textarea.dataset.exampleOutcome] = [...new Set(examples)];
   }
-  try {
-    const response = await message({ type: 'SET_CREDENTIAL', transport, key });
-    if (!response?.ok) { setStatus(`Could not save key: ${responseDetail(response, 'invalid key')}`, true); return; }
-    $('#api-key').value = '';
-    setStatus('Key saved in restricted session storage.');
-  } catch (error) {
-    setStatus(`Could not save key: ${messageFailure(error, 'SET_CREDENTIAL')}`, true);
-  }
+  return result;
 }
 
-async function saveSettings() {
+async function applySettings() {
   if (!requireSettings()) return;
   const mode = $$('input[name="mode"]').find(input => input.checked)?.value || 'label';
   const selectedTransport = $$('input[name="transport"]').find(input => input.checked)?.value || settings.selectedTransport;
@@ -214,23 +232,41 @@ async function saveSettings() {
     catch (error) { setStatus(`Could not request direct TypeSafe permission: ${error.message}`, true); return; }
     if (!granted) { setStatus('Direct TypeSafe permission was not granted.', true); return; }
   }
+  let categoryExamples;
+  try { categoryExamples = collectExamples(); }
+  catch (error) { setStatus(error.message, true); return; }
   const patch = {
     selectedTransport,
     categoryToggles: Object.fromEntries($$('input[data-category]').map(input => [input.dataset.category, input.checked])),
+    categoryExamples,
+    batchSize: Number($('#batch-size').value),
     mode,
+    siteModes: Object.fromEntries($$('select[data-site-mode]').map(input => [input.dataset.siteMode, input.value])),
+    siteThresholds: Object.fromEntries($$('input[data-site-threshold]').map(input => [input.dataset.siteThreshold, { ...(settings.siteThresholds?.[input.dataset.siteThreshold] || settings.thresholds), presentProbability: Number(input.value) }])),
+    allowlist: $('#allowlist').value.split('\n').map(value => value.trim()).filter(Boolean),
     consentedRoutes: $('#consent').checked ? [...new Set([...(settings.consentedRoutes || []), selectedTransport])] : settings.consentedRoutes,
     thresholds: {
       presentProbability: Number($('#probability').value),
       confidence: Number($('#confidence').value)
     }
   };
-  await savePatch(patch);
-}
-
-async function saveAllowlist() {
-  if (!requireSettings()) return;
-  const allowlist = $('#allowlist').value.split('\n').map(value => value.trim()).filter(Boolean);
-  await savePatch({ allowlist });
+  try {
+    const response = await message({
+      type: 'APPLY_OPTIONS',
+      expectedRevision: settings.revision,
+      patch,
+      credential: { transport: selectedTransport, key: $('#api-key').value.trim(), remember: $('#remember-key').checked }
+    });
+    if (!response?.ok) { setStatus(`Could not apply settings: ${responseDetail(response, 'stale settings')}`, true); return; }
+    if (!isSettingsReady(response.settings)) { setStatus('Could not apply settings: service worker returned invalid settings.', true); return; }
+    settings = response.settings;
+    credentials = response.credentials || credentials;
+    $('#api-key').value = '';
+    render();
+    setStatus('Settings applied.');
+  } catch (error) {
+    setStatus(`Could not apply settings: ${messageFailure(error, 'APPLY_OPTIONS')}`, true);
+  }
 }
 
 function downloadSettings() {
@@ -296,6 +332,7 @@ async function load() {
     if (!response?.ok) { setStatus(`Could not load settings: ${responseDetail(response, 'worker rejected the request')}`, true); return; }
     if (!isSettingsReady(response.settings)) { setStatus('Could not load settings: service worker returned invalid settings.', true); return; }
     settings = response.settings;
+    credentials = response.credentials || {};
     render();
   } catch (error) {
     settings = null;
@@ -303,10 +340,12 @@ async function load() {
   }
 }
 
-$$('input[name="transport"]').forEach(input => input.addEventListener('change', () => { $('#consent').checked = false; disclosure(); }));
-$('#save-key').addEventListener('click', saveKey);
-$('#save-settings').addEventListener('click', saveSettings);
-$('#save-allowlist').addEventListener('click', saveAllowlist);
+$$('input[name="transport"]').forEach(input => input.addEventListener('change', () => {
+  $('#consent').checked = false;
+  $('#remember-key').checked = credentials[input.value]?.remembered === true;
+  disclosure();
+}));
+$('#apply-settings').addEventListener('click', applySettings);
 $('#add-custom').addEventListener('click', addCustom);
 $('#export-settings').addEventListener('click', downloadSettings);
 $('#import-settings').addEventListener('change', importSettings);

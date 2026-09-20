@@ -24,7 +24,7 @@ import {
   validateJevResponse
 } from '../src/shared/contracts.js';
 import { evaluatePolicy } from '../src/shared/policy.js';
-import { authFailureMessage, dispatchBlockReason, handleMessage, isExtensionSender, leaseBlocksDispatch, pausePatch, restoreDispatchLeases, usageForToday } from '../src/background/service-worker.js';
+import { authFailureMessage, buildBatchPayload, dispatchBlockReason, handleMessage, isExtensionSender, leaseBlocksDispatch, pausePatch, restoreDispatchLeases, usageForToday } from '../src/background/service-worker.js';
 import { isSettingsReady, messageFailure, responseDetail } from '../src/options/state.js';
 import { gatewayResult } from '../src/background/gateway.js';
 
@@ -161,6 +161,8 @@ const tests = [
     assert.equal(settings.categoryToggles.ai_slop, true);
     assert.equal(settings.siteModes.linkedin, 'collapse');
     assert.equal(settings.mode, 'collapse');
+    assert.equal(settings.batchSize, 3);
+    assert.deepEqual(settings.categoryExamples.ai_slop.present, []);
     assert.equal(mergeSettings(settings, { mode: 'overlay', siteModes: { ...settings.siteModes, linkedin: 'overlay' } }).siteModes.linkedin, 'overlay');
     assert.equal(TRANSPORTS.gateway.endpoint, 'https://ai-gateway.vercel.sh/v1/evaluate');
     assert.equal(sanitizeSettings({ ...DEFAULT_SETTINGS, schemaVersion: 99 }), null);
@@ -174,12 +176,42 @@ const tests = [
     assert.deepEqual(settings.consentedRoutes, []);
     assert.equal(direct.siteThresholds.linkedin.presentProbability, 0.9);
   }],
-  ['AI slop is a quality rubric, not an authorship claim', () => {
+  ['rubric questions distinguish AI slop from useful specificity', () => {
     const question = buildQuestions(['ai_slop']).ai_slop;
     assert.equal(question.type, 'choice');
     assert.match(question.instructions, /content quality only/u);
     assert.match(question.instructions, /never whether AI wrote/u);
+    assert.match(question.instructions, /technically correct but interchangeable/iu);
+    assert.match(question.instructions, /interview-question dumps/u);
+    assert.match(question.instructions, /worked example/u);
+    assert.match(question.instructions, /toy mappings/u);
+    assert.match(question.instructions, /political opinions.*alone are not slop/u);
+    assert.match(question.criteria.present, /lacks original evidence/u);
     assert.deepEqual(Object.keys(question.criteria), ['present', 'absent', 'uncertain']);
+  }],
+  ['rubric questions recognize substantive engagement bait without overclassifying', () => {
+    const question = buildQuestions(['engagement_bait']).engagement_bait;
+    assert.match(question.instructions, /Substance does not exempt bait/u);
+    assert.match(question.instructions, /personal-brand conversion/u);
+    assert.match(question.instructions, /reaction-first rhetorical outrage/u);
+    assert.match(question.instructions, /substantive post can be bait/u);
+    assert.match(question.instructions, /political opinions.*alone are not bait/u);
+    assert.match(question.instructions, /genuine discussion invitation alone are not bait/u);
+    assert.match(question.criteria.present, /substantive information may still be present/u);
+    assert.match(question.criteria.absent, /without manipulative packaging/u);
+  }],
+  ['batch payload targets posts independently and includes user examples', () => {
+    const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, categoryExamples: { ai_slop: { present: ['Generic ten-item list'], absent: ['Measured benchmark with tradeoffs'] } } });
+    const tasks = [
+      { site: { id: 'linkedin' }, request: { postText: 'first post with enough useful text' }, categories: ['ai_slop'] },
+      { site: { id: 'x' }, request: { postText: 'second post with enough useful text' }, categories: ['ai_slop'] }
+    ];
+    const payload = buildBatchPayload(tasks, settings);
+    assert.equal(payload.state.posts.length, 2);
+    assert.match(payload.questions.p0_ai_slop.instructions.target, /posts\[0\]\.post_text/u);
+    assert.match(payload.questions.p1_ai_slop.instructions.target, /posts\[1\]\.post_text/u);
+    assert.deepEqual(payload.questions.p0_ai_slop.criteria.present.examples, ['Generic ten-item list']);
+    assert.deepEqual(payload.questions.p0_ai_slop.criteria.absent.examples, ['Measured benchmark with tradeoffs']);
   }],
   ['custom rules reject broad or executable selector input', () => {
     const valid = validateCustomSite({
@@ -343,6 +375,7 @@ const tests = [
     const area = name => ({
       async get(keys) { return Object.fromEntries(keys.filter(key => Object.hasOwn(stores[name], key)).map(key => [key, stores[name][key]])); },
       async set(values) { Object.assign(stores[name], values); },
+      async remove(keys) { for (const key of keys) delete stores[name][key]; },
       async setAccessLevel() {}
     });
     globalThis.chrome = {
@@ -365,6 +398,16 @@ const tests = [
     assert.equal(paused.settings.inferencePaused, true);
     const resumed = await handleMessage({ type: 'PAUSE_INFERENCE', paused: false }, sender);
     assert.equal(resumed.settings.inferencePaused, false);
+    const applied = await handleMessage({
+      type: 'APPLY_OPTIONS', expectedRevision: resumed.settings.revision,
+      patch: { selectedTransport: 'gateway', batchSize: 1 },
+      credential: { transport: 'gateway', key: '', remember: true }
+    }, sender);
+    assert.equal(applied.ok, true);
+    assert.equal(applied.settings.batchSize, 1);
+    assert.equal(applied.credentials.gateway.remembered, true);
+    assert.equal(stores.local.credential_gateway, 'vck_example_key');
+    assert.equal(stores.session.credential_gateway, undefined);
     delete globalThis.chrome;
   }]
 ];

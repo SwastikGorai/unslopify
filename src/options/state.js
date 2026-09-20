@@ -7,6 +7,8 @@ export function isSettingsReady(settings) {
     && settings.siteModes && typeof settings.siteModes === 'object'
     && Array.isArray(settings.customSites)
     && settings.categoryToggles && typeof settings.categoryToggles === 'object'
+    && settings.categoryExamples && typeof settings.categoryExamples === 'object'
+    && Number.isInteger(settings.batchSize) && settings.batchSize >= 1 && settings.batchSize <= 10
     && settings.thresholds && typeof settings.thresholds.presentProbability === 'number' && typeof settings.thresholds.confidence === 'number'
     && settings.siteThresholds && typeof settings.siteThresholds === 'object'
     && typeof settings.mode === 'string' && Array.isArray(settings.allowlist)

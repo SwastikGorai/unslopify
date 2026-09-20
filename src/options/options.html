@@ -21,12 +21,10 @@
           <label><input type="radio" name="transport" value="gateway"> Vercel AI Gateway</label>
           <label><input type="radio" name="transport" value="direct"> TypeSafe direct</label>
         </fieldset>
-        <label for="api-key">Session API key</label>
-        <div class="key-row">
-          <input id="api-key" type="password" autocomplete="off" spellcheck="false" inputmode="text">
-          <button id="save-key" type="button">Save for this session</button>
-        </div>
-        <small>The key stays in restricted extension session storage and is cleared when the browser restarts. It is never sent to pages.</small>
+        <label for="api-key">API key</label>
+        <input id="api-key" type="password" autocomplete="off" spellcheck="false" inputmode="text" placeholder="Leave blank to keep the current key">
+        <label><input id="remember-key" type="checkbox"> Remember API key on this browser</label>
+        <small>Remembered keys use restricted extension-local storage but are not encrypted. Session-only keys are cleared when the browser restarts. Keys are never sent to pages.</small>
       </section>
 
       <section aria-labelledby="sites-title">
@@ -55,10 +53,18 @@
           <label>Present probability <input id="probability" type="number" min="0" max="1" step="0.01"></label>
           <label>Confidence <input id="confidence" type="number" min="0" max="1" step="0.01"></label>
         </div>
-        <button id="save-settings" type="button">Save settings</button>
         <label for="allowlist">Local post/author allowlist (one stable ID per line)</label>
         <textarea id="allowlist" rows="3" spellcheck="false"></textarea>
-        <button id="save-allowlist" type="button">Save allowlist</button>
+      </section>
+
+      <section aria-labelledby="advanced-title">
+        <h2 id="advanced-title">Advanced</h2>
+        <label>Posts per API call <input id="batch-size" type="number" min="1" max="10" step="1"></label>
+        <small>Use 1 for per-post calls. Larger values wait up to 50 ms to combine queued posts.</small>
+        <h3>Filter examples</h3>
+        <p>Add one example per line. Examples clarify the built-in filters; they do not replace them.</p>
+        <div id="category-examples"></div>
+        <button id="apply-settings" type="button">Apply settings</button>
       </section>
 
       <section aria-labelledby="custom-title">

@@ -9,9 +9,11 @@ npm install
 npm run build
 ```
 
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `dist/`. Open **Options**, choose a recipient route, paste that route's own API key, review the disclosure, and explicitly enable a site. Keys are kept in restricted `chrome.storage.session`; browser restart requires entering the key again. Gateway keys are not sent to TypeSafe direct, and direct keys are not sent to Gateway.
+Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `dist/`. Open **Options**, choose a recipient route, paste that route's own API key, review the disclosure, and explicitly enable a site. Keys stay in restricted session storage by default; **Remember API key** opts into unencrypted extension-local storage. Gateway keys are not sent to TypeSafe direct, and direct keys are not sent to Gateway.
 
-The default route uses AI SDK 7's `experimental_evaluate()` with `gateway.evaluationModel('typesafe-ai/jev')`. The build bundles the SDK into the extension; the Gateway key still stays in restricted session storage. The direct option uses TypeSafe's documented endpoint and `jev-latest`; no silent route or model fallback is used.
+The default route uses AI SDK 7's `experimental_evaluate()` with `gateway.evaluationModel('typesafe-ai/jev')`. The build bundles the SDK into the extension. The direct option uses TypeSafe's documented endpoint and `jev-latest`; no silent route or model fallback is used.
+
+Enabled filters are parallel questions in each request. Advanced settings can combine 1–10 queued posts per request (default 3, with a 50 ms collection window) and add filtered/allowed examples that augment each built-in rubric. Non-secret settings persist in `chrome.storage.local`.
 
 ## Checks
 

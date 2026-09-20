@@ -47,6 +47,10 @@ h2 {
   text-transform: uppercase;
 }
 
+h3 { margin: 24px 0 8px; font: 900 1rem/1 system-ui, sans-serif; text-transform: uppercase; }
+
+#remember-key { margin-top: 12px; }
+
 p { margin: 0 0 14px; }
 .lede { max-width: 58ch; margin: 18px 0 24px; font-weight: 700; }
 
