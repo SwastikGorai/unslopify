@@ -10,7 +10,7 @@ async function load() {
   const site = response.site ? [...Object.values(BUILTIN_SITES), ...(response.settings.customSites || [])].find(item => item.id === response.site) : null;
   $('#site').textContent = site ? `${site.label}: ${response.enabled ? 'enabled' : 'disabled'}` : 'No supported enabled feed in this tab.';
   const siteMode = site ? (response.settings.siteModes?.[site.id] || response.settings.mode) : response.settings.mode;
-  $('#mode').textContent = siteMode === 'collapse' ? 'Mode: collapse with reveal' : siteMode === 'overlay' ? 'Mode: translucent banner' : 'Mode: label only';
+  $('#mode').textContent = siteMode === 'collapse' ? 'Mode: collapse with reveal' : siteMode === 'overlay-low' ? 'Mode: low blur' : siteMode === 'overlay-high' ? 'Mode: high blur' : 'Mode: label only';
   $('#status').textContent = response.statusMessage || response.settings.statusMessage || (response.cooldown ? 'Inference is cooling down; posts remain visible.' : `${response.pending} pending request${response.pending === 1 ? '' : 's'}.`);
   $('#usage').textContent = `Today: ${response.usage?.dayAttempts || 0} attempts · ${response.cacheHits || 0} cache hits`;
   $('#pause').textContent = response.settings.inferencePaused ? 'Resume inference' : 'Pause inference';

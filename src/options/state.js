@@ -12,6 +12,7 @@ export function isSettingsReady(settings) {
     && settings.thresholds && typeof settings.thresholds.presentProbability === 'number' && typeof settings.thresholds.confidence === 'number'
     && settings.siteThresholds && typeof settings.siteThresholds === 'object'
     && typeof settings.mode === 'string' && Array.isArray(settings.allowlist)
+    && typeof settings.overlayTint === 'string'
     && Array.isArray(settings.consentedOrigins) && Array.isArray(settings.consentedRoutes)
   );
 }
@@ -23,4 +24,8 @@ export function responseDetail(response, fallback) {
 export function messageFailure(error, operation) {
   const detail = typeof error === 'string' ? error : error?.message;
   return `${operation}: ${detail || 'No response from the extension service worker.'}`;
+}
+
+export function needsCredential(key, status) {
+  return String(key ?? '').trim() === '' && status?.present !== true;
 }

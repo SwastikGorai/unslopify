@@ -1,33 +1,73 @@
 # Unslopify
 
-Unslopify is a Manifest V3 Chrome extension that labels configurable feed patterns such as AI slop and engagement bait. AI slop means templated low-value content quality; it does not infer AI authorship. Pending, uncertain, unsupported, and failed classifications stay visible.
+![Unslopify: a configurable quality filter for social feeds](assets/banner.png)
 
-## Local setup
+Unslopify is a Chrome extension for making noisy social feeds a little easier to browse.
 
-```text
+It looks for configurable patterns such as AI slop, engagement bait, generic filler, and empty hype. Matching posts can be labeled, blurred, or collapsed. It is a quality filter, not an AI-authorship detector.
+
+## What it does
+
+- Works with LinkedIn and X(maybe) out of the box.
+- Lets you enable only the filters you care about.
+- Supports label, low-blur, high-blur, and collapsed display modes.
+- Offers green, blue, cream, or neutral blur tints.
+- Keeps uncertain or failed classifications visible.
+- Supports custom feed rules for other sites.
+- Lets you add your own filtered and allowed examples for each category.
+- Uses either Vercel AI Gateway or TypeSafe directly.
+
+## Install locally
+
+You will need Node.js 22 or newer.
+
+```bash
 npm install
 npm run build
 ```
 
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `dist/`. Open **Options**, choose a recipient route, paste that route's own API key, review the disclosure, and explicitly enable a site. Keys stay in restricted session storage by default; **Remember API key** opts into unencrypted extension-local storage. Gateway keys are not sent to TypeSafe direct, and direct keys are not sent to Gateway.
+Then:
 
-The default route uses AI SDK 7's `experimental_evaluate()` with `gateway.evaluationModel('typesafe-ai/jev')`. The build bundles the SDK into the extension. The direct option uses TypeSafe's documented endpoint and `jev-latest`; no silent route or model fallback is used.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select the `dist/` directory.
+4. Open the extension's **Options** page.
+5. Choose an API route, add its key, and enable the sites you want to filter.
 
-Enabled filters are parallel questions in each request. Advanced settings can combine 1–10 queued posts per request (default 3, with a 50 ms collection window) and add filtered/allowed examples that augment each built-in rubric. Non-secret settings persist in `chrome.storage.local`.
+## Using it
 
-## Checks
+The options page controls which categories are active, how sensitive each site should be, and what happens to matching posts.
 
-- `npm run typecheck` checks JavaScript syntax and manifest JSON without downloading tools.
-- `npm test` runs offline contract, policy, fixture-boundary, and response-validation checks; it never needs a key or transmits post text.
-- `npm run build` copies the MV3 source and bundles the AI SDK worker into `dist/`.
-- `npm run test:e2e` serves the sanitized LinkedIn fixture, loads a temporary test overlay of the built extension in Chromium, and asserts the production extractor's bounded-card output; it clearly skips when `CHROME_BIN` or `CHROMIUM_BIN` is unavailable.
-- `npm run eval:jev` sends one synthetic example only when the explicitly selected route key is provided as `AI_GATEWAY_API_KEY` or `TYPESAFE_API_KEY` (`JEV_TRANSPORT=direct` selects the latter). `JEV_TRANSPORT=deterministic node eval/run.mjs` runs a clearly marked test-only typed response with no network and no production/dist behavior. Live output is redacted and never includes post text or the key.
-- `npm run eval:local` reports raw-count metrics from a redacted prediction file (`EVAL_PREDICTIONS=...`); the checked-in synthetic fixture is not a quality claim and currently has no predictions.
+The built-in categories are:
 
-## Permissions and data
+- **AI slop:** polished but interchangeable summaries, checklists, primers, and similar low-value templates.
+- **Engagement bait:** content packaged mainly to drive saves, comments, shares, follows, or reactions.
+- **Generic filler:** broad platitudes without a useful observation, example, or argument.
+- **Empty hype:** promotional claims without concrete details, evidence, or a useful resource.
 
-The extension has storage and scripting permissions, a fixed Gateway host permission, and optional exact site/API origins. It registers a content script only for an enabled, granted route. The worker recomputes the text hash, owns credentials and network access, validates the typed response, and applies a bounded daily/minute budget. Content scripts receive no key, raw provider response, or unrelated page data.
+Advanced settings include request batching, category examples, custom site rules, and settings import/export.
 
-LinkedIn `/feed/` and X `/home/` are the bundled adapters. Text-only, English-dominant posts with clear boundaries are eligible; short, non-English, truncated, quote-dependent, image-only, private, comments, messages, profile/search pages, and ambiguous cards remain visible. Custom rules accept exact HTTPS origins, path prefixes, and CSS selectors; they cannot contain JavaScript. Preview samples are local and make no Jev call.
+## How Jev fits in
 
-No live Jev credential, authorized LinkedIn session, or Chromium binary was available during this implementation. The offline checks and build pass; the live inference and real-site smoke gates remain to be run with user-owned access.
+Unslopify uses [Jev by TypeSafe AI](https://docs.typesafe.ai/introduction) to make the classification decisions. Instead of asking a model to write an explanation, the extension sends the post and a set of bounded questions, such as whether it contains engagement bait. Jev returns typed answers with probabilities, and Unslopify applies your chosen thresholds and display settings.
+
+Jev can be accessed through Vercel AI Gateway or TypeSafe directly. Classification is still probabilistic, so uncertain results and request failures remain visible rather than being hidden automatically.
+
+## API keys and privacy
+
+Unslopify uses your own Vercel AI Gateway or TypeSafe API key. Keys stay in restricted extension storage and are never exposed to the pages you visit. By default, a key lasts for the browser session; **Remember API key** stores it locally on that browser without encryption.
+
+Only eligible post text is sent for classification. Comments, messages, drafts, profile pages, search pages, ambiguous cards, and unsupported posts are left alone. Site access is requested only when you enable that site.
+
+Non-secret settings persist across browser restarts.
+
+## Development
+
+```bash
+npm test          # offline tests
+npm run typecheck # JavaScript and manifest checks
+npm run build     # build the extension into dist/
+npm run test:e2e  # Chromium smoke test when CHROME_BIN is set
+```
+
+Contributions and bug reports are always welcome! Feel free to fork (and star) it and make any changes you want!!

@@ -33,9 +33,19 @@ button.unslopify-overlay {
   justify-content: center;
   width: 100%;
   margin: 0;
-  border-radius: inherit;
-  background: rgb(250 245 255 / 82%);
-  backdrop-filter: blur(3px);
-  font-size: 16px;
+  border: 3px solid #111;
+  border-radius: 0;
+  box-shadow: inset 6px 6px 0 rgb(17 17 17 / 82%);
+  color: #111;
+  font: 900 14px/1.2 ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  letter-spacing: .03em;
   text-align: center;
+  text-transform: uppercase;
 }
+
+button.unslopify-overlay-low { backdrop-filter: blur(3px); }
+button.unslopify-overlay-high { backdrop-filter: blur(12px); }
+button.unslopify-tint-none { background: rgb(255 255 255 / 24%); }
+button.unslopify-tint-green { background: rgb(199 255 74 / 78%); }
+button.unslopify-tint-blue { background: rgb(167 216 255 / 78%); }
+button.unslopify-tint-cream { background: rgb(244 240 230 / 82%); }

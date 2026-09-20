@@ -1,5 +1,5 @@
-import { BUILTIN_SITES, CATEGORY_DEFINITIONS, MAX_EXAMPLE_LENGTH, MAX_EXAMPLES_PER_OUTCOME, TRANSPORTS } from '../shared/contracts.js';
-import { isSettingsReady, messageFailure, responseDetail } from './state.js';
+import { BUILTIN_SITES, CATEGORY_DEFINITIONS, DISPLAY_MODES, MAX_EXAMPLE_LENGTH, MAX_EXAMPLES_PER_OUTCOME, TRANSPORTS } from '../shared/contracts.js';
+import { isSettingsReady, messageFailure, needsCredential, responseDetail } from './state.js';
 
 let settings = null;
 let credentials = {};
@@ -25,11 +25,12 @@ function message(payload) {
   });
 }
 
-function setStatus(text, error = false) {
-  const node = $('#status');
+function setStatus(text, error = false, node = $('#status')) {
   node.textContent = text;
   node.dataset.error = error ? 'true' : 'false';
 }
+
+const siteStatus = siteId => $(`[data-site-status="${siteId}"]`);
 
 function disclosure() {
   const transport = TRANSPORTS[$$('input[name="transport"]').find(input => input.checked)?.value || 'gateway'];
@@ -70,10 +71,10 @@ function renderSites() {
     const mode = document.createElement('select');
     mode.dataset.siteMode = site.id;
     mode.setAttribute('aria-label', `${site.label} display mode`);
-    for (const value of ['label', 'overlay', 'collapse']) {
+    for (const value of DISPLAY_MODES) {
       const option = document.createElement('option');
       option.value = value;
-      option.textContent = value === 'collapse' ? 'Collapse' : value === 'overlay' ? 'Translucent banner' : 'Label';
+      option.textContent = { label: 'Label', 'overlay-low': 'Low blur', 'overlay-high': 'High blur', collapse: 'Collapse' }[value];
       option.selected = (settings.siteModes?.[site.id] || settings.mode) === value;
       mode.append(option);
     }
@@ -86,7 +87,12 @@ function renderSites() {
     sensitivity.value = settings.siteThresholds?.[site.id]?.presentProbability ?? settings.thresholds.presentProbability;
     sensitivity.title = 'Present probability threshold';
     sensitivity.setAttribute('aria-label', `${site.label} present probability threshold`);
-    actions.append(state, mode, sensitivity, enable, disable);
+    const status = document.createElement('span');
+    status.className = 'action-status';
+    status.dataset.siteStatus = site.id;
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    actions.append(state, mode, sensitivity, enable, disable, status);
     row.append(label, actions);
     container.append(row);
   }
@@ -100,7 +106,7 @@ function renderSites() {
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Remove';
-    remove.addEventListener('click', () => savePatch({ customSites: settings.customSites.filter(item => item.id !== site.id) }));
+    remove.addEventListener('click', () => savePatch({ customSites: settings.customSites.filter(item => item.id !== site.id) }, $('#custom-status')));
     const preview = document.createElement('button');
     preview.type = 'button';
     preview.textContent = 'Preview';
@@ -111,21 +117,23 @@ function renderSites() {
 }
 
 async function previewSite(site) {
+  const status = $('#custom-status');
   const tabs = await chrome.tabs.query({ currentWindow: true });
   const tab = tabs.find(candidate => candidate.url?.startsWith(`${site.origin}/`));
-  if (!tab?.id) { setStatus('No active tab to preview.', true); return; }
+  if (!tab?.id) { setStatus('No active tab to preview.', true, status); return; }
   try {
     const result = await chrome.tabs.sendMessage(tab.id, { type: 'PREVIEW_RULE', rule: site });
-    if (!result?.ok) { setStatus(`Preview unavailable: ${result?.error || 'enable this rule on the active tab first'}`, true); return; }
+    if (!result?.ok) { setStatus(`Preview unavailable: ${result?.error || 'enable this rule on the active tab first'}`, true, status); return; }
     $('#preview-output').textContent = result.samples.join('\n\n') || 'No unambiguous body text found.';
-    setStatus(`Preview found ${result.count} cards locally (${result.ambiguous || 0} ambiguous); highlighted matches for five seconds. No Jev call was made.`);
-  } catch { setStatus('Preview requires an enabled rule on the active tab.', true); }
+    setStatus(`Preview found ${result.count} cards locally (${result.ambiguous || 0} ambiguous); highlighted matches for five seconds. No Jev call was made.`, false, status);
+  } catch { setStatus('Preview requires an enabled rule on the active tab.', true, status); }
 }
 
 function render() {
   $$('input[name="transport"]').forEach(input => { input.checked = input.value === settings.selectedTransport; });
   $$('input[data-category]').forEach(input => { input.checked = settings.categoryToggles[input.dataset.category] === true; });
   $$('input[name="mode"]').forEach(input => { input.checked = input.value === settings.mode; });
+  $$('input[name="overlay-tint"]').forEach(input => { input.checked = input.value === settings.overlayTint; });
   $('#probability').value = settings.thresholds.presentProbability;
   $('#confidence').value = settings.thresholds.confidence;
   $('#allowlist').value = settings.allowlist.join('\n');
@@ -161,53 +169,55 @@ function renderExamples() {
   }
 }
 
-async function savePatch(patch) {
+async function savePatch(patch, status = $('#status')) {
   if (!requireSettings()) return false;
   try {
     const response = await message({ type: 'SAVE_SETTINGS', expectedRevision: settings.revision, patch });
-    if (!response?.ok) { setStatus(`Could not save settings: ${responseDetail(response, 'stale settings')}`, true); return false; }
-    if (!isSettingsReady(response.settings)) { setStatus('Could not save settings: service worker returned invalid settings.', true); return false; }
+    if (!response?.ok) { setStatus(`Could not save settings: ${responseDetail(response, 'stale settings')}`, true, status); return false; }
+    if (!isSettingsReady(response.settings)) { setStatus('Could not save settings: service worker returned invalid settings.', true, status); return false; }
     settings = response.settings;
     render();
-    setStatus('Settings saved.');
+    setStatus('Settings saved.', false, status);
     return true;
   } catch (error) {
-    setStatus(`Could not save settings: ${messageFailure(error, 'SAVE_SETTINGS')}`, true);
+    setStatus(`Could not save settings: ${messageFailure(error, 'SAVE_SETTINGS')}`, true, status);
     return false;
   }
 }
 
 async function enableSite(site) {
   if (!requireSettings()) return;
+  const report = (text, error = false) => setStatus(text, error, siteStatus(site.id));
   const route = $$('input[name="transport"]').find(input => input.checked)?.value || settings.selectedTransport;
-  if (!$('#consent').checked && (!settings.consentedOrigins.includes(site.origin) || !settings.consentedRoutes.includes(route))) { setStatus('Review the recipient disclosure and confirm it before enabling a site.', true); return; }
+  if (!$('#consent').checked && (!settings.consentedOrigins.includes(site.origin) || !settings.consentedRoutes.includes(route))) { report('Review the recipient disclosure and confirm it before enabling this site.', true); return; }
   let granted;
   try { granted = await chrome.permissions.request({ origins: [`${site.origin}/*`] }); }
-  catch (error) { setStatus(`Could not request permission: ${error.message}`, true); return; }
-  if (!granted) { setStatus(`Permission was not granted for ${site.origin}.`, true); return; }
+  catch (error) { report(`Could not request permission: ${error.message}`, true); return; }
+  if (!granted) { report(`Permission was not granted for ${site.origin}.`, true); return; }
   try {
     const response = await message({ type: 'ENABLE_SITE', siteId: site.id, consent: true });
-    if (!response?.ok) { setStatus(`Could not enable ${site.label}: ${responseDetail(response, 'permission denied')}`, true); return; }
-    if (!isSettingsReady(response.settings)) { setStatus(`Could not enable ${site.label}: service worker returned invalid settings.`, true); return; }
+    if (!response?.ok) { report(`Could not enable ${site.label}: ${responseDetail(response, 'permission denied')}`, true); return; }
+    if (!isSettingsReady(response.settings)) { report(`Could not enable ${site.label}: service worker returned invalid settings.`, true); return; }
     settings = response.settings;
     render();
-    setStatus(`${site.label} enabled. Reload an existing tab if it was already open.`);
+    report(`${site.label} enabled. Reload an existing tab if it was already open.`);
   } catch (error) {
-    setStatus(`Could not enable ${site.label}: ${messageFailure(error, 'ENABLE_SITE')}`, true);
+    report(`Could not enable ${site.label}: ${messageFailure(error, 'ENABLE_SITE')}`, true);
   }
 }
 
 async function disableSite(site) {
   if (!requireSettings()) return;
+  const report = (text, error = false) => setStatus(text, error, siteStatus(site.id));
   try {
     const response = await message({ type: 'DISABLE_SITE', siteId: site.id });
-    if (!response?.ok) { setStatus(`Could not disable ${site.label}: ${responseDetail(response, 'permission denied')}`, true); return; }
-    if (!isSettingsReady(response.settings)) { setStatus(`Could not disable ${site.label}: service worker returned invalid settings.`, true); return; }
+    if (!response?.ok) { report(`Could not disable ${site.label}: ${responseDetail(response, 'permission denied')}`, true); return; }
+    if (!isSettingsReady(response.settings)) { report(`Could not disable ${site.label}: service worker returned invalid settings.`, true); return; }
     settings = response.settings;
     render();
-    setStatus(`${site.label} disabled and existing labels removed where reachable.`);
+    report(`${site.label} disabled and existing labels removed where reachable.`);
   } catch (error) {
-    setStatus(`Could not disable ${site.label}: ${messageFailure(error, 'DISABLE_SITE')}`, true);
+    report(`Could not disable ${site.label}: ${messageFailure(error, 'DISABLE_SITE')}`, true);
   }
 }
 
@@ -225,6 +235,15 @@ async function applySettings() {
   if (!requireSettings()) return;
   const mode = $$('input[name="mode"]').find(input => input.checked)?.value || 'label';
   const selectedTransport = $$('input[name="transport"]').find(input => input.checked)?.value || settings.selectedTransport;
+  const apiKey = $('#api-key');
+  const key = apiKey.value.trim();
+  if (needsCredential(key, credentials[selectedTransport])) {
+    apiKey.setAttribute('aria-invalid', 'true');
+    apiKey.focus();
+    setStatus(`Enter a ${TRANSPORTS[selectedTransport].credentialName} before applying settings.`, true);
+    return;
+  }
+  apiKey.removeAttribute('aria-invalid');
   if (!$('#consent').checked && selectedTransport !== settings.selectedTransport) { setStatus('Review the updated recipient disclosure before switching routes.', true); return; }
   if (selectedTransport === 'direct' && settings.selectedTransport !== 'direct') {
     let granted;
@@ -241,6 +260,7 @@ async function applySettings() {
     categoryExamples,
     batchSize: Number($('#batch-size').value),
     mode,
+    overlayTint: $$('input[name="overlay-tint"]').find(input => input.checked)?.value || settings.overlayTint,
     siteModes: Object.fromEntries($$('select[data-site-mode]').map(input => [input.dataset.siteMode, input.value])),
     siteThresholds: Object.fromEntries($$('input[data-site-threshold]').map(input => [input.dataset.siteThreshold, { ...(settings.siteThresholds?.[input.dataset.siteThreshold] || settings.thresholds), presentProbability: Number(input.value) }])),
     allowlist: $('#allowlist').value.split('\n').map(value => value.trim()).filter(Boolean),
@@ -255,7 +275,7 @@ async function applySettings() {
       type: 'APPLY_OPTIONS',
       expectedRevision: settings.revision,
       patch,
-      credential: { transport: selectedTransport, key: $('#api-key').value.trim(), remember: $('#remember-key').checked }
+      credential: { transport: selectedTransport, key, remember: $('#remember-key').checked }
     });
     if (!response?.ok) { setStatus(`Could not apply settings: ${responseDetail(response, 'stale settings')}`, true); return; }
     if (!isSettingsReady(response.settings)) { setStatus('Could not apply settings: service worker returned invalid settings.', true); return; }
@@ -271,43 +291,46 @@ async function applySettings() {
 
 function downloadSettings() {
   if (!requireSettings()) return;
+  const status = $('#transfer-status');
   message({ type: 'EXPORT_SETTINGS' }).then(response => {
-    if (!response?.ok) { setStatus(`Could not export settings: ${responseDetail(response, 'export failed')}`, true); return; }
+    if (!response?.ok) { setStatus(`Could not export settings: ${responseDetail(response, 'export failed')}`, true, status); return; }
     const url = URL.createObjectURL(new Blob([JSON.stringify(response.settings, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = 'unslopify-settings.json';
     link.click();
     URL.revokeObjectURL(url);
-    setStatus('Exported non-secret settings; imported rules start disabled.');
-  }).catch(error => setStatus(`Could not export settings: ${messageFailure(error, 'EXPORT_SETTINGS')}`, true));
+    setStatus('Exported non-secret settings; imported rules start disabled.', false, status);
+  }).catch(error => setStatus(`Could not export settings: ${messageFailure(error, 'EXPORT_SETTINGS')}`, true, status));
 }
 
 async function importSettings(event) {
   if (!requireSettings()) return;
+  const status = $('#transfer-status');
   const file = event.target.files?.[0];
-  if (!file || file.size > 256 * 1024) { setStatus('Import is too large.', true); return; }
+  if (!file || file.size > 256 * 1024) { setStatus('Import is too large.', true, status); return; }
   let imported;
   try {
     imported = JSON.parse(await file.text());
   } catch {
-    setStatus('Import is not valid JSON.', true);
+    setStatus('Import is not valid JSON.', true, status);
     return;
   }
   try {
     const response = await message({ type: 'IMPORT_SETTINGS', expectedRevision: settings.revision, settings: imported });
-    if (!response?.ok) { setStatus(`Could not import settings: ${responseDetail(response, 'invalid file')}`, true); return; }
-    if (!isSettingsReady(response.settings)) { setStatus('Could not import settings: service worker returned invalid settings.', true); return; }
+    if (!response?.ok) { setStatus(`Could not import settings: ${responseDetail(response, 'invalid file')}`, true, status); return; }
+    if (!isSettingsReady(response.settings)) { setStatus('Could not import settings: service worker returned invalid settings.', true, status); return; }
     settings = response.settings;
     render();
-    setStatus('Imported settings are disabled until each site is enabled again.');
+    setStatus('Imported settings are disabled until each site is enabled again.', false, status);
   } catch (error) {
-    setStatus(`Could not import settings: ${messageFailure(error, 'IMPORT_SETTINGS')}`, true);
+    setStatus(`Could not import settings: ${messageFailure(error, 'IMPORT_SETTINGS')}`, true, status);
   }
 }
 
 async function addCustom() {
   if (!requireSettings()) return;
+  const status = $('#custom-status');
   const rule = {
     id: $('#custom-id').value.trim(),
     label: $('#custom-label').value.trim(),
@@ -320,8 +343,8 @@ async function addCustom() {
     extractionVersion: 'custom-1',
     enabled: false
   };
-  if (await savePatch({ customSites: [...settings.customSites.filter(site => site.id !== rule.id), rule] })) {
-    if (!settings.customSites.some(site => site.id === rule.id)) { setStatus('Custom rule is invalid; check its ID, HTTPS origin, paths, and selectors.', true); return; }
+  if (await savePatch({ customSites: [...settings.customSites.filter(site => site.id !== rule.id), rule] }, status)) {
+    if (!settings.customSites.some(site => site.id === rule.id)) { setStatus('Custom rule is invalid; check its ID, HTTPS origin, paths, and selectors.', true, status); return; }
     ['custom-id', 'custom-label', 'custom-origin', 'custom-root', 'custom-post', 'custom-body', 'custom-permalink'].forEach(id => { $(`#${id}`).value = ''; });
   }
 }

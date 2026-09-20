@@ -1,7 +1,7 @@
-import { classifyGate, modeForSite, thresholdsForSite } from './contracts.js';
+import { DISPLAY_MODES, classifyGate, modeForSite, thresholdsForSite } from './contracts.js';
 
 export function evaluatePolicy({ settings, answers, postId, siteId }) {
-  if (!settings || !['label', 'collapse', 'overlay'].includes(modeForSite(settings, siteId))) return { visible: true, categories: [] };
+  if (!settings || !DISPLAY_MODES.includes(modeForSite(settings, siteId))) return { visible: true, categories: [] };
   if (settings.allowlist.includes(postId)) return { visible: true, categories: [] };
   const thresholds = thresholdsForSite(settings, siteId);
   const categories = Object.entries(answers ?? {})

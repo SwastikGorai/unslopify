@@ -10,7 +10,6 @@
     <main>
       <h1>Unslopify</h1>
       <p class="lede">A configurable quality filter. It does not detect who used AI.</p>
-      <p id="status" role="status" aria-live="polite"></p>
 
       <section aria-labelledby="transport-title">
         <h2 id="transport-title">Inference</h2>
@@ -46,8 +45,16 @@
         <fieldset>
           <legend>Display mode for all sites</legend>
           <label><input type="radio" name="mode" value="label"> Label only</label>
-          <label><input type="radio" name="mode" value="overlay"> Translucent banner</label>
+          <label><input type="radio" name="mode" value="overlay-low"> Low blur</label>
+          <label><input type="radio" name="mode" value="overlay-high"> High blur</label>
           <label><input type="radio" name="mode" value="collapse"> Collapse with “Show post”</label>
+        </fieldset>
+        <fieldset>
+          <legend>Blur tint</legend>
+          <label><input type="radio" name="overlay-tint" value="none"> No color</label>
+          <label><input type="radio" name="overlay-tint" value="green"> Green</label>
+          <label><input type="radio" name="overlay-tint" value="blue"> Blue</label>
+          <label><input type="radio" name="overlay-tint" value="cream"> Cream</label>
         </fieldset>
         <div class="grid">
           <label>Present probability <input id="probability" type="number" min="0" max="1" step="0.01"></label>
@@ -57,37 +64,43 @@
         <textarea id="allowlist" rows="3" spellcheck="false"></textarea>
       </section>
 
-      <section aria-labelledby="advanced-title">
-        <h2 id="advanced-title">Advanced</h2>
-        <label>Posts per API call <input id="batch-size" type="number" min="1" max="10" step="1"></label>
-        <small>Use 1 for per-post calls. Larger values wait up to 50 ms to combine queued posts.</small>
-        <h3>Filter examples</h3>
-        <p>Add one example per line. Examples clarify the built-in filters; they do not replace them.</p>
-        <div id="category-examples"></div>
+      <section aria-label="Advanced settings">
+        <details>
+          <summary>Advanced</summary>
+          <div class="advanced-content">
+            <label>Posts per API call <input id="batch-size" type="number" min="1" max="10" step="1"></label>
+            <small>Use 1 for per-post calls. Larger values wait up to 50 ms to combine queued posts.</small>
+            <h3>Filter examples</h3>
+            <p>Add one example per line. Examples clarify the built-in filters; they do not replace them.</p>
+            <div id="category-examples"></div>
+            <h3>Custom site rule</h3>
+            <p>Rules use exact HTTPS origins and CSS selectors only. No scripts or remote rules are accepted.</p>
+            <div class="grid">
+              <label>ID <input id="custom-id" placeholder="my-feed" maxlength="40"></label>
+              <label>Label <input id="custom-label" placeholder="My feed" maxlength="80"></label>
+              <label>Origin <input id="custom-origin" placeholder="https://example.com"></label>
+              <label>Path prefix <input id="custom-path" value="/feed"></label>
+              <label>Feed root selector <input id="custom-root" placeholder="main"></label>
+              <label>Post selector <input id="custom-post" placeholder="article"></label>
+              <label>Body selector <input id="custom-body" placeholder="[data-post-body]"></label>
+              <label>Permalink selector <input id="custom-permalink" placeholder="a[href*='/posts/']"></label>
+            </div>
+            <button id="add-custom" type="button">Add rule</button>
+            <p id="custom-status" class="action-status" role="status" aria-live="polite"></p>
+            <div id="custom-rules"></div>
+            <pre id="preview-output" aria-live="polite"></pre>
+            <div class="key-row">
+              <button id="export-settings" type="button">Export non-secret settings</button>
+              <label class="file-button">Import settings <input id="import-settings" type="file" accept="application/json"></label>
+            </div>
+            <p id="transfer-status" class="action-status" role="status" aria-live="polite"></p>
+          </div>
+        </details>
+      </section>
+      <div class="settings-actions">
         <button id="apply-settings" type="button">Apply settings</button>
-      </section>
-
-      <section aria-labelledby="custom-title">
-        <h2 id="custom-title">Advanced site rule</h2>
-        <p>Rules use exact HTTPS origins and CSS selectors only. No scripts or remote rules are accepted.</p>
-        <div class="grid">
-          <label>ID <input id="custom-id" placeholder="my-feed" maxlength="40"></label>
-          <label>Label <input id="custom-label" placeholder="My feed" maxlength="80"></label>
-          <label>Origin <input id="custom-origin" placeholder="https://example.com"></label>
-          <label>Path prefix <input id="custom-path" value="/feed"></label>
-          <label>Feed root selector <input id="custom-root" placeholder="main"></label>
-          <label>Post selector <input id="custom-post" placeholder="article"></label>
-          <label>Body selector <input id="custom-body" placeholder="[data-post-body]"></label>
-          <label>Permalink selector <input id="custom-permalink" placeholder="a[href*='/posts/']"></label>
-        </div>
-        <button id="add-custom" type="button">Add rule</button>
-        <div id="custom-rules"></div>
-        <pre id="preview-output" aria-live="polite"></pre>
-        <div class="key-row">
-          <button id="export-settings" type="button">Export non-secret settings</button>
-          <label class="file-button">Import settings <input id="import-settings" type="file" accept="application/json"></label>
-        </div>
-      </section>
+        <p id="status" class="action-status" role="status" aria-live="polite"></p>
+      </div>
     </main>
     <script type="module" src="options.js"></script>
   </body>

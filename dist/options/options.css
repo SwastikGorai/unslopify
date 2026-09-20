@@ -54,8 +54,8 @@ h3 { margin: 24px 0 8px; font: 900 1rem/1 system-ui, sans-serif; text-transform:
 p { margin: 0 0 14px; }
 .lede { max-width: 58ch; margin: 18px 0 24px; font-weight: 700; }
 
-#status:not(:empty) {
-  margin: 0 0 24px;
+.action-status:not(:empty) {
+  margin: 12px 0 0;
   padding: 12px 14px;
   border: 3px solid var(--ink);
   background: var(--accent);
@@ -63,7 +63,29 @@ p { margin: 0 0 14px; }
   font-weight: 800;
 }
 
-#status[data-error="true"] { background: var(--danger); }
+.action-status[data-error="true"] { background: var(--danger); }
+
+.site-actions .action-status { flex-basis: 100%; }
+
+.settings-actions {
+  margin-top: 28px;
+}
+
+.settings-actions #apply-settings { margin-top: 0; }
+
+details > summary {
+  cursor: pointer;
+  font: 900 1.25rem/1 system-ui, sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+details > summary:focus-visible {
+  outline: 4px solid #ff8a00;
+  outline-offset: 4px;
+}
+
+.advanced-content { margin-top: 20px; }
 
 section {
   margin-top: 28px;

@@ -119,13 +119,14 @@
     if (!categories.length || state.revealed.has(binding.postId)) return;
     const text = labelFor(categories);
     const mode = state.settings.siteModes?.[state.site.id] || state.settings.mode;
-    if (mode === 'overlay') {
+    if (mode === 'overlay-low' || mode === 'overlay-high') {
       const card = binding.node;
-      const overlay = makeControl(`${text} — Show post`, 'button', () => {
+      const overlay = makeControl('Hidden · Show post', 'button', () => {
         state.revealed.add(binding.postId);
         removeRender(card);
       });
-      overlay.classList.add('unslopify-overlay');
+      overlay.setAttribute('aria-label', `${text}. Show post`);
+      overlay.classList.add('unslopify-overlay', `unslopify-${mode}`, `unslopify-tint-${state.settings.overlayTint || 'green'}`);
       card.classList.add('unslopify-overlay-host');
       card.append(overlay);
       state.rendered.set(card, { overlay });

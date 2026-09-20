@@ -5,6 +5,7 @@ import {
   BUILTIN_SITES,
   CATEGORY_DEFINITIONS,
   DEFAULT_SETTINGS,
+  DISPLAY_MODES,
   MAX_MESSAGE_BYTES,
   PROTOCOL_VERSION,
   TRANSPORTS,
@@ -25,11 +26,15 @@ import {
 } from '../src/shared/contracts.js';
 import { evaluatePolicy } from '../src/shared/policy.js';
 import { authFailureMessage, buildBatchPayload, dispatchBlockReason, handleMessage, isExtensionSender, leaseBlocksDispatch, pausePatch, restoreDispatchLeases, usageForToday } from '../src/background/service-worker.js';
-import { isSettingsReady, messageFailure, responseDetail } from '../src/options/state.js';
+import { isSettingsReady, messageFailure, needsCredential, responseDetail } from '../src/options/state.js';
 import { gatewayResult } from '../src/background/gateway.js';
 
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/linkedin-posts.json', import.meta.url), 'utf8'));
 const fixtureHtml = await readFile(new URL('./fixtures/linkedin-feed.html', import.meta.url), 'utf8');
+const optionsHtml = await readFile(new URL('../src/options/options.html', import.meta.url), 'utf8');
+const optionsSource = await readFile(new URL('../src/options/options.js', import.meta.url), 'utf8');
+const contentSource = await readFile(new URL('../src/content/content.js', import.meta.url), 'utf8');
+const contentCss = await readFile(new URL('../src/content/content.css', import.meta.url), 'utf8');
 const extractorSource = await readFile(new URL('../src/content/extractor.js', import.meta.url), 'utf8');
 const extractorContext = { URL };
 runInNewContext(extractorSource, extractorContext);
@@ -162,8 +167,17 @@ const tests = [
     assert.equal(settings.siteModes.linkedin, 'collapse');
     assert.equal(settings.mode, 'collapse');
     assert.equal(settings.batchSize, 3);
+    assert.equal(settings.overlayTint, 'green');
     assert.deepEqual(settings.categoryExamples.ai_slop.present, []);
-    assert.equal(mergeSettings(settings, { mode: 'overlay', siteModes: { ...settings.siteModes, linkedin: 'overlay' } }).siteModes.linkedin, 'overlay');
+    const migrated = mergeSettings(settings, { mode: 'overlay', siteModes: { ...settings.siteModes, linkedin: 'overlay' } });
+    assert.equal(migrated.mode, 'overlay-low');
+    assert.equal(migrated.siteModes.linkedin, 'overlay-low');
+    const highBlur = mergeSettings(settings, { mode: 'overlay-high', overlayTint: 'blue', siteModes: { ...settings.siteModes, linkedin: 'overlay-high' } });
+    const importedHighBlur = importSettings(exportableSettings(highBlur));
+    assert.equal(importedHighBlur.mode, 'overlay-high');
+    assert.equal(importedHighBlur.overlayTint, 'blue');
+    assert.equal(mergeSettings(settings, { overlayTint: 'purple' }).overlayTint, 'green');
+    assert.deepEqual(DISPLAY_MODES, ['label', 'overlay-low', 'overlay-high', 'collapse']);
     assert.equal(TRANSPORTS.gateway.endpoint, 'https://ai-gateway.vercel.sh/v1/evaluate');
     assert.equal(sanitizeSettings({ ...DEFAULT_SETTINGS, schemaVersion: 99 }), null);
     const direct = mergeSettings(settings, { selectedTransport: 'direct' });
@@ -354,6 +368,32 @@ const tests = [
     assert.equal(responseDetail({ error: { detail: 'storage unavailable' } }, 'worker unavailable'), 'storage unavailable');
     assert.equal(messageFailure(new Error('Receiving end does not exist.'), 'GET_SETTINGS'), 'GET_SETTINGS: Receiving end does not exist.');
     assert.equal(messageFailure(undefined, 'SAVE_SETTINGS'), 'SAVE_SETTINGS: No response from the extension service worker.');
+    assert.equal(needsCredential('', undefined), true);
+    assert.equal(needsCredential('   ', { present: false }), true);
+    assert.equal(needsCredential('new_api_key', { present: false }), false);
+    assert.equal(needsCredential('', { present: true }), false);
+  }],
+  ['settings actions and blur controls keep their UX contract', () => {
+    assert.match(optionsHtml, /<details>\s*<summary>Advanced<\/summary>/u);
+    assert.ok(optionsHtml.indexOf('id="status"') > optionsHtml.indexOf('id="apply-settings"'));
+    assert.match(optionsHtml, /id="custom-status" class="action-status"/u);
+    assert.match(optionsHtml, /id="transfer-status" class="action-status"/u);
+    assert.match(optionsSource, /status\.dataset\.siteStatus = site\.id/u);
+    assert.match(optionsSource, /setStatus\(text, error, siteStatus\(site\.id\)\)/u);
+    assert.match(optionsHtml, /value="overlay-low"> Low blur/u);
+    assert.match(optionsHtml, /value="overlay-high"> High blur/u);
+    assert.match(optionsHtml, /name="overlay-tint" value="none"> No color/u);
+    assert.match(optionsHtml, /name="overlay-tint" value="green"> Green/u);
+    assert.match(optionsHtml, /name="overlay-tint" value="blue"> Blue/u);
+    assert.match(optionsHtml, /name="overlay-tint" value="cream"> Cream/u);
+    assert.match(contentSource, /'Hidden · Show post'/u);
+    assert.match(contentSource, /setAttribute\('aria-label', `\$\{text\}\. Show post`\)/u);
+    assert.match(contentCss, /unslopify-overlay-low \{ backdrop-filter: blur\(3px\)/u);
+    assert.match(contentCss, /unslopify-overlay-high \{ backdrop-filter: blur\(12px\)/u);
+    assert.match(contentCss, /unslopify-tint-none \{ background:/u);
+    assert.match(contentCss, /unslopify-tint-green \{ background:/u);
+    assert.match(contentCss, /unslopify-tint-blue \{ background:/u);
+    assert.match(contentCss, /unslopify-tint-cream \{ background:/u);
   }],
   ['extension messages, pause state, usage dates, and scoped teardown are stable', () => {
     globalThis.chrome = { runtime: { id: 'extension-id', getURL: path => `chrome-extension://extension-id/${path}` } };

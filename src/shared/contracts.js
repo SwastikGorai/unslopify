@@ -8,6 +8,8 @@ export const CACHE_LIMIT = 500;
 export const CACHE_TTL_MS = 30 * 60 * 1000;
 export const MAX_EXAMPLES_PER_OUTCOME = 10;
 export const MAX_EXAMPLE_LENGTH = 500;
+export const DISPLAY_MODES = Object.freeze(['label', 'overlay-low', 'overlay-high', 'collapse']);
+export const OVERLAY_TINTS = Object.freeze(['none', 'green', 'blue', 'cream']);
 
 export const TRANSPORTS = Object.freeze({
   gateway: Object.freeze({
@@ -106,6 +108,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   thresholds: Object.freeze({ presentProbability: 0.9, confidence: 0.7 }),
   siteThresholds: Object.freeze({ linkedin: Object.freeze({ presentProbability: 0.9, confidence: 0.7 }), x: Object.freeze({ presentProbability: 0.9, confidence: 0.7 }) }),
   mode: 'collapse',
+  overlayTint: 'green',
   allowlist: Object.freeze([]),
   limits: Object.freeze({ daily: 300, perMinute: 30, concurrency: 2, queue: 50, perTab: 20 }),
   consentedOrigins: Object.freeze([]),
@@ -224,7 +227,7 @@ export function sanitizeSettings(input) {
     linkedin: input.enabledSites?.linkedin === true,
     x: input.enabledSites?.x === true
   };
-  const siteModes = Object.fromEntries([...Object.keys(BUILTIN_SITES), ...customSites.map(site => site.id)].map(id => [id, ['label', 'collapse', 'overlay'].includes(input.siteModes?.[id]) ? input.siteModes[id] : 'label']));
+  const siteModes = Object.fromEntries([...Object.keys(BUILTIN_SITES), ...customSites.map(site => site.id)].map(id => [id, normalizeDisplayMode(input.siteModes?.[id], 'label')]));
   const categoryToggles = Object.fromEntries(Object.keys(CATEGORY_DEFINITIONS).map(id => [id, input.categoryToggles?.[id] == null ? DEFAULT_SETTINGS.categoryToggles[id] : input.categoryToggles[id] === true]));
   const categoryExamples = Object.fromEntries(Object.keys(CATEGORY_DEFINITIONS).map(id => [id, {
     present: sanitizeExamples(input.categoryExamples?.[id]?.present),
@@ -255,7 +258,8 @@ export function sanitizeSettings(input) {
     batchSize: integerBetween(input.batchSize, 1, 10, DEFAULT_SETTINGS.batchSize),
     thresholds,
     siteThresholds,
-    mode: ['label', 'collapse', 'overlay'].includes(input.mode) ? input.mode : 'label',
+    mode: normalizeDisplayMode(input.mode, 'label'),
+    overlayTint: OVERLAY_TINTS.includes(input.overlayTint) ? input.overlayTint : DEFAULT_SETTINGS.overlayTint,
     allowlist,
     limits: {
       daily: integerBetween(input.limits?.daily, 1, 10_000, DEFAULT_SETTINGS.limits.daily),
@@ -294,7 +298,12 @@ export function effectiveCategoryIds(settings) {
 }
 
 export function modeForSite(settings, siteId) {
-  return ['label', 'collapse', 'overlay'].includes(settings.siteModes?.[siteId]) ? settings.siteModes[siteId] : ['collapse', 'overlay'].includes(settings.mode) ? settings.mode : 'label';
+  return normalizeDisplayMode(settings.siteModes?.[siteId], normalizeDisplayMode(settings.mode, 'label'));
+}
+
+function normalizeDisplayMode(value, fallback) {
+  if (value === 'overlay') return 'overlay-low';
+  return DISPLAY_MODES.includes(value) ? value : fallback;
 }
 
 export function thresholdsForSite(settings, siteId) {
